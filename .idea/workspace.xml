@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="5ed9acd2-109a-434e-a6fa-8dcc684d7ddf" name="Changes" comment="" />
+    <list default="true" id="7dc60905-88e9-4844-ab85-1da59b2af13f" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Projekt/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Projekt/.idea/Projekt.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Projekt/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Projekt/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -25,7 +32,7 @@
   <component name="ProjectColorInfo"><![CDATA[{
   "associatedIndex": 4
 }]]></component>
-  <component name="ProjectId" id="3J56thUqOZESaT8QPxCkPB8IPkU" />
+  <component name="ProjectId" id="3J59KZA456C9SuqNsIP9wrQFtSb" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -36,8 +43,11 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
-    "ignore.virus.scanning.warn.message": "true",
     "last_opened_file_path": "C:/Workspace/03_GIT/GitHub/LehrWay_Frontend",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "vue.rearranger.settings.migration": "true"
   }
@@ -51,12 +61,12 @@
   </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="5ed9acd2-109a-434e-a6fa-8dcc684d7ddf" name="Changes" comment="" />
-      <created>1788938798390</created>
+      <changelist id="7dc60905-88e9-4844-ab85-1da59b2af13f" name="Changes" comment="" />
+      <created>1788939998293</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1788938798390</updated>
-      <workItem from="1788938799533" duration="88000" />
+      <updated>1788939998293</updated>
+      <workItem from="1788939999616" duration="431000" />
     </task>
     <servers />
   </component>
