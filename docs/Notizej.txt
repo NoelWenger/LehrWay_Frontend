@@ -1,0 +1,81 @@
+- Kap. 0 anders notieren.
+- Vorgabe Text weg
+- Korrigieren 
+
+- Kann-Ziele ändern
+* Dark mode z.b
+
+- Labels mehr für Benutezer
+
+- Legänge basis, daruas Klasse, etc. ==> Lehrgänge wie templates
+* 1.2 & 2.3 verändern
+* Noel informaieren
+
+- Generell, kein spezifische Kalenderwoche
+
+- Requeirement: Login, Registrierung, Security, Ansochten, Labels, Ressources (z.b Räume)
+
+- Bei Jahrsändeungen immer vom Vorjahr kopieren oder explizit gesagt vom Nutzer. (letzteres Kann gemacht werden)
+
+- Mockup 
+
+Notiz:
+
+ - Lable dynamisch erstellen
+ - Labels nicht am gleichen Tag
+ - Label 2 Eingaben (Name & Semester)
+ - Schüler erstellen Dynamisch
+ - Klasse Dynamisch erstellen
+ - Lehrgänge dynamisch erstellen
+
+
+------------
+
+
+
+Regeln hinzufügn, wo Klassen ausgewähtöwerden könnnen die nicht zusammen sein können. (Zusatz bei Klassen)
+
+- Dynamisch selber resssourcen dazutun und einfach angezeigt wie viel noch verfügbar sind
+
+
+
+
+
+
+- Wenn mit Cursor über einem tag gehen dann sollte man als user Nachricht bekommen wenn zwei oder merhrere Klassen unmöglicj ist.
+
+- 
+
+-
+
+-
+
+------------------------------------
+
+LOGIN
+
+- Keine Rollen
+- Jeder hat eigene Login, aber runningcondition sind geteilt (zwei können gleichzeitig bearbeiten)
+- Hat jeder User eigene Sicht? - Ja, alle am gleichen.
+- Art Log hinzufügen? (kurze popup für Änderungen) - 
+- Running Condition Strategien: Log-Dateien drinschreiben welcher user gerade eingeloggt ist. Muss nicht jeder Individualität (admin, etc.)
+- Könenn es parrarell benutzen.
+- 
+- log pro Lehrgang (keiner hatn einfluss auf dem anderen)
+- Kein Must-Kriterium 
+- Eher mit der Hsitory. 
+
+---------------------------------
+
+Tabelle-Lösung Regeln
+
+? HSU - Tabellen für Regeln sinnvoll ?
+
+- NIX ÄND$ERN...!!
+
+
+
+
+
+
+
