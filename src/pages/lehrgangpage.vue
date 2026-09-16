@@ -85,49 +85,53 @@
 
           <hr>
 
-          <h3>Semester</h3>
+          <h3>Lehrplan</h3>
 
-          <button
-            type="button"
-            @click="addSemester"
-          >
-            Semester hinzufügen
-          </button>
+          <table>
+            <thead>
+            <tr>
+              <th rowspan="3">
+                Module
+              </th>
 
-          <div
-            v-for="(semester, semesterIndex) in selectedCourse.semesters"
-            :key="semester.id"
-          >
-            <h4>
-              Semester {{ semesterIndex + 1 }}
-            </h4>
+              <th colspan="4">
+                Lehrjahr 1
+              </th>
 
-            <button
-              type="button"
-              @click="removeSemester(semester.id)"
+              <th colspan="4">
+                Lehrjahr 2
+              </th>
+
+              <th colspan="4">
+                Lehrjahr 3
+              </th>
+            </tr>
+
+            <tr>
+              <th colspan="2">Semester 1</th>
+              <th colspan="2">Semester 2</th>
+              <th colspan="2">Semester 3</th>
+              <th colspan="2">Semester 4</th>
+              <th colspan="2">Semester 5</th>
+              <th colspan="2">Semester 6</th>
+            </tr>
+
+            <tr>
+              <th
+                v-for="quarter in quarters"
+                :key="quarter"
+              >
+                Q{{ quarter }}
+              </th>
+            </tr>
+            </thead>
+
+            <tbody>
+            <tr
+              v-for="module in selectedCourse.modules"
+              :key="module.id"
             >
-              Semester entfernen
-            </button>
-
-            <h5>Module</h5>
-
-            <form @submit.prevent="addModule(semester.id)">
-              <input
-                v-model="newModuleNames[semester.id]"
-                type="text"
-                placeholder="Modulname"
-              >
-
-              <button type="submit">
-                Modul hinzufügen
-              </button>
-            </form>
-
-            <ul>
-              <li
-                v-for="module in semester.modules"
-                :key="module.id"
-              >
+              <th>
                 <input
                   v-model="module.name"
                   type="text"
@@ -135,23 +139,48 @@
 
                 <button
                   type="button"
-                  @click="removeModule(semester.id, module.id)"
+                  @click="removeModule(module.id)"
                 >
                   Entfernen
                 </button>
-              </li>
-            </ul>
+              </th>
 
-            <p v-if="semester.modules.length === 0">
-              Noch keine Module vorhanden.
-            </p>
+              <td
+                v-for="quarter in quarters"
+                :key="quarter"
+              >
+                <button
+                  type="button"
+                  @click="selectQuarter(module.id, quarter)"
+                >
+                  {{ isQuarterSelected(module.id, quarter) ? '●' : '○' }}
+                </button>
+              </td>
+            </tr>
+            </tbody>
+          </table>
 
-            <hr>
-          </div>
-
-          <p v-if="selectedCourse.semesters.length === 0">
-            Noch keine Semester vorhanden.
+          <p v-if="selectedCourse.modules.length === 0">
+            Noch keine Module vorhanden.
           </p>
+
+          <form @submit.prevent="addModule">
+            <input
+              v-model="newModuleName"
+              type="text"
+              placeholder="Modulname"
+            >
+
+            <button type="submit">
+              Modul hinzufügen
+            </button>
+          </form>
+
+          <p v-if="moduleError">
+            {{ moduleError }}
+          </p>
+
+          <hr>
 
           <button
             type="button"
@@ -172,60 +201,56 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-interface Module {
+interface CourseModule {
   id: number
   name: string
-}
-
-interface Semester {
-  id: number
-  modules: Module[]
 }
 
 interface Course {
   id: number
   name: string
-  semesters: Semester[]
+  modules: CourseModule[]
 }
+
+interface SelectedQuarter {
+  moduleId: number
+  quarter: number
+}
+
+const quarters = [
+  1, 2, 3, 4,
+  5, 6, 7, 8,
+  9, 10, 11, 12
+]
 
 const courses = ref<Course[]>([
   {
     id: 1,
     name: 'IMS',
-    semesters: [
+    modules: [
       {
         id: 101,
-        modules: [
-          {
-            id: 1001,
-            name: 'M117'
-          },
-          {
-            id: 1002,
-            name: 'M122'
-          }
-        ]
+        name: 'M117'
       },
       {
         id: 102,
-        modules: [
-          {
-            id: 1003,
-            name: 'M164'
-          }
-        ]
+        name: 'M122'
+      },
+      {
+        id: 103,
+        name: 'M164'
       }
     ]
   },
   {
     id: 2,
     name: 'Informatiker/in Applikationsentwicklung',
-    semesters: []
+    modules: []
   },
   {
     id: 3,
     name: 'Informatiker/in Plattformentwicklung',
-    semesters: []
+    modules: []
   }
 ])
 
@@ -239,7 +264,10 @@ const createCourseError = ref('')
 const editedCourseName = ref('')
 const editCourseError = ref('')
 
-const newModuleNames = ref<Record<number, string>>({})
+const newModuleName = ref('')
+const moduleError = ref('')
+
+const selectedQuarter = ref<SelectedQuarter | null>(null)
 
 const filteredCourses = computed(() =>
   courses.value.filter(course =>
@@ -257,7 +285,10 @@ const selectedCourse = computed(() =>
 
 function selectCourse(courseId: number) {
   selectedCourseId.value = courseId
+
   editCourseError.value = ''
+  moduleError.value = ''
+  selectedQuarter.value = null
 
   const course = courses.value.find(
     course => course.id === courseId
@@ -292,7 +323,7 @@ function createCourse() {
   courses.value.push({
     id: Date.now(),
     name,
-    semesters: []
+    modules: []
   })
 
   newCourseName.value = ''
@@ -347,66 +378,85 @@ function deleteCourse() {
   selectedCourseId.value = null
   editedCourseName.value = ''
   editCourseError.value = ''
+  newModuleName.value = ''
+  moduleError.value = ''
+  selectedQuarter.value = null
 }
 
-function addSemester() {
+function addModule() {
   if (!selectedCourse.value) return
 
-  selectedCourse.value.semesters.push({
-    id: Date.now(),
-    modules: []
-  })
-}
+  const name = newModuleName.value.trim()
 
-function removeSemester(semesterId: number) {
-  if (!selectedCourse.value) return
+  moduleError.value = ''
 
-  selectedCourse.value.semesters =
-    selectedCourse.value.semesters.filter(
-      semester => semester.id !== semesterId
+  if (!name) {
+    moduleError.value =
+      'Der Modulname darf nicht leer sein.'
+    return
+  }
+
+  const moduleAlreadyExists =
+    selectedCourse.value.modules.some(
+      module =>
+        module.name.trim().toLowerCase() ===
+        name.toLowerCase()
     )
 
-  delete newModuleNames.value[semesterId]
-}
+  if (moduleAlreadyExists) {
+    moduleError.value =
+      'Ein Modul mit diesem Namen existiert bereits.'
+    return
+  }
 
-function addModule(semesterId: number) {
-  if (!selectedCourse.value) return
-
-  const moduleName =
-    newModuleNames.value[semesterId]?.trim()
-
-  if (!moduleName) return
-
-  const semester =
-    selectedCourse.value.semesters.find(
-      semester => semester.id === semesterId
-    )
-
-  if (!semester) return
-
-  semester.modules.push({
+  selectedCourse.value.modules.push({
     id: Date.now(),
-    name: moduleName
+    name
   })
 
-  newModuleNames.value[semesterId] = ''
+  newModuleName.value = ''
 }
 
-function removeModule(
-  semesterId: number,
-  moduleId: number
+function removeModule(moduleId: number) {
+  if (!selectedCourse.value) return
+
+  selectedCourse.value.modules =
+    selectedCourse.value.modules.filter(
+      module => module.id !== moduleId
+    )
+
+  if (
+    selectedQuarter.value?.moduleId === moduleId
+  ) {
+    selectedQuarter.value = null
+  }
+}
+
+function selectQuarter(
+  moduleId: number,
+  quarter: number
 ) {
-  if (!selectedCourse.value) return
+  if (
+    selectedQuarter.value?.moduleId === moduleId &&
+    selectedQuarter.value?.quarter === quarter
+  ) {
+    selectedQuarter.value = null
+    return
+  }
 
-  const semester =
-    selectedCourse.value.semesters.find(
-      semester => semester.id === semesterId
-    )
+  selectedQuarter.value = {
+    moduleId,
+    quarter
+  }
+}
 
-  if (!semester) return
-
-  semester.modules = semester.modules.filter(
-    module => module.id !== moduleId
+function isQuarterSelected(
+  moduleId: number,
+  quarter: number
+) {
+  return (
+    selectedQuarter.value?.moduleId === moduleId &&
+    selectedQuarter.value?.quarter === quarter
   )
 }
 </script>
