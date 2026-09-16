@@ -15,11 +15,19 @@
     </header>
 
     <main>
-      <h2>Wochenplan</h2>
 
-      <p>
-        Hier entsteht die Wochenansicht von Lehrway.
-      </p>
+      <aside>
+        <h2>Klassen</h2>
+      </aside>
+
+      <section>
+        <h2>Wochenansicht</h2>
+      </section>
+
+      <aside>
+        <h2>Klasse bearbeiten</h2>
+      </aside>
+
     </main>
   </div>
 </template>
