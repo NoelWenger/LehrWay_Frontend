@@ -43,7 +43,13 @@
       </aside>
 
       <section>
-        <h2>Wochenansicht</h2>
+        <div>
+          <h2>Wochenansicht</h2>
+
+          <button type="button" @click="changeYear(-1)">←</button>
+          <strong>{{ currentYear }}</strong>
+          <button type="button" @click="changeYear(1)">→</button>
+        </div>
 
         <table>
           <thead>
@@ -102,6 +108,11 @@ interface SchoolClass {
   schoolDays: Weekday[]
 }
 
+interface YearData {
+  year: number
+  classes: SchoolClass[]
+}
+
 const weekdays: Weekday[] = [
   'Montag',
   'Dienstag',
@@ -111,18 +122,32 @@ const weekdays: Weekday[] = [
 ]
 
 const roomCapacity = 5
+const currentYear = ref(2026)
 
-const classes = ref<SchoolClass[]>([
-  { id: 1, name: 'KLA', schoolDays: ['Montag', 'Dienstag', 'Donnerstag'] },
-  { id: 2, name: 'KLB', schoolDays: ['Dienstag', 'Mittwoch', 'Freitag'] },
-  { id: 3, name: 'KLC', schoolDays: ['Montag', 'Mittwoch', 'Donnerstag'] },
-  { id: 4, name: 'KLD', schoolDays: ['Dienstag', 'Donnerstag', 'Freitag'] }
+const years = ref<YearData[]>([
+  {
+    year: 2026,
+    classes: [
+      { id: 1, name: 'KLA', schoolDays: ['Montag', 'Dienstag', 'Donnerstag'] },
+      { id: 2, name: 'KLB', schoolDays: ['Dienstag', 'Mittwoch', 'Freitag'] },
+      { id: 3, name: 'KLC', schoolDays: ['Montag', 'Mittwoch', 'Donnerstag'] },
+      { id: 4, name: 'KLD', schoolDays: ['Dienstag', 'Donnerstag', 'Freitag'] }
+    ]
+  }
 ])
 
 const searchQuery = ref('')
 const selectedClassId = ref<number | null>(null)
 const showCreateClass = ref(false)
 const newClassName = ref('')
+
+const currentYearData = computed(() =>
+  years.value.find(yearData => yearData.year === currentYear.value)
+)
+
+const classes = computed(() =>
+  currentYearData.value?.classes ?? []
+)
 
 const filteredClasses = computed(() =>
   classes.value.filter(klasse =>
@@ -141,9 +166,9 @@ function selectClass(classId: number) {
 function createClass() {
   const name = newClassName.value.trim()
 
-  if (!name) return
+  if (!name || !currentYearData.value) return
 
-  classes.value.push({
+  currentYearData.value.classes.push({
     id: Date.now(),
     name,
     schoolDays: []
@@ -174,5 +199,25 @@ function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
 
 function getUsedRooms(day: Weekday) {
   return classes.value.filter(klasse => hasSchool(klasse, day)).length
+}
+
+function changeYear(direction: number) {
+  const newYear = currentYear.value + direction
+
+  if (!years.value.some(yearData => yearData.year === newYear)) {
+    const copiedClasses: SchoolClass[] = classes.value.map(klasse => ({
+      id: klasse.id,
+      name: klasse.name,
+      schoolDays: [...klasse.schoolDays]
+    }))
+
+    years.value.push({
+      year: newYear,
+      classes: copiedClasses
+    })
+  }
+
+  currentYear.value = newYear
+  selectedClassId.value = null
 }
 </script>
