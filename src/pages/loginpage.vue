@@ -6,11 +6,34 @@ const router = useRouter()
 const email = ref('')
 const password = ref('')
 
-const handleLogin = () => {
-  console.log('Eingegebene E-Mail:', email.value)
-  console.log('Eingegebenes Passwort:', password.value)
+const handleLogin = async () => {
+  try {
 
-  router.push('/home')
+    const response = await fetch('http://localhost:3000/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email.value,
+        password: password.value
+      }),
+    });
+
+    const data = await response.json();
+    console.log("Antwort vom Backend:", data);
+
+    if (response.ok && data.success) {
+      console.log("Login erfolgreich! Weiterleitung...");
+      router.push('/home');
+    } else {
+      alert(data.message || "Login fehlgeschlagen!");
+    }
+
+  } catch (error) {
+    console.error("Verbindungsfehler zum Backend:", error);
+    alert("Server ist nicht erreichbar!");
+  }
 }
 
 </script>
