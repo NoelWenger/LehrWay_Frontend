@@ -13,7 +13,19 @@
       <aside>
         <h2>Klassen</h2>
 
-        <button type="button">Klasse erstellen</button>
+        <button type="button" @click="showCreateClass = true">
+          Klasse erstellen
+        </button>
+
+        <form v-if="showCreateClass" @submit.prevent="createClass">
+          <input
+            v-model="newClassName"
+            type="text"
+            placeholder="Klassenname"
+          >
+          <button type="submit">Erstellen</button>
+          <button type="button" @click="cancelCreateClass">Abbrechen</button>
+        </form>
 
         <input
           v-model="searchQuery"
@@ -48,7 +60,7 @@
             <th>{{ klasse.name }}</th>
 
             <td v-for="day in weekdays" :key="day">
-              <button type="button">
+              <button type="button" @click="toggleSchoolDay(klasse, day)">
                 {{ hasSchool(klasse, day) ? 'Schule' : '-' }}
               </button>
             </td>
@@ -82,10 +94,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag']
+type Weekday = 'Montag' | 'Dienstag' | 'Mittwoch' | 'Donnerstag' | 'Freitag'
+
+interface SchoolClass {
+  id: number
+  name: string
+  schoolDays: Weekday[]
+}
+
+const weekdays: Weekday[] = [
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag'
+]
+
 const roomCapacity = 5
 
-const classes = ref([
+const classes = ref<SchoolClass[]>([
   { id: 1, name: 'KLA', schoolDays: ['Montag', 'Dienstag', 'Donnerstag'] },
   { id: 2, name: 'KLB', schoolDays: ['Dienstag', 'Mittwoch', 'Freitag'] },
   { id: 3, name: 'KLC', schoolDays: ['Montag', 'Mittwoch', 'Donnerstag'] },
@@ -93,7 +120,9 @@ const classes = ref([
 ])
 
 const searchQuery = ref('')
-const selectedClassId = ref(null)
+const selectedClassId = ref<number | null>(null)
+const showCreateClass = ref(false)
+const newClassName = ref('')
 
 const filteredClasses = computed(() =>
   classes.value.filter(klasse =>
@@ -105,15 +134,45 @@ const selectedClass = computed(() =>
   classes.value.find(klasse => klasse.id === selectedClassId.value)
 )
 
-function selectClass(classId) {
+function selectClass(classId: number) {
   selectedClassId.value = classId
 }
 
-function hasSchool(klasse, day) {
+function createClass() {
+  const name = newClassName.value.trim()
+
+  if (!name) return
+
+  classes.value.push({
+    id: Date.now(),
+    name,
+    schoolDays: []
+  })
+
+  newClassName.value = ''
+  showCreateClass.value = false
+}
+
+function cancelCreateClass() {
+  newClassName.value = ''
+  showCreateClass.value = false
+}
+
+function hasSchool(klasse: SchoolClass, day: Weekday) {
   return klasse.schoolDays.includes(day)
 }
 
-function getUsedRooms(day) {
+function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
+  if (hasSchool(klasse, day)) {
+    klasse.schoolDays = klasse.schoolDays.filter(
+      schoolDay => schoolDay !== day
+    )
+  } else {
+    klasse.schoolDays.push(day)
+  }
+}
+
+function getUsedRooms(day: Weekday) {
   return classes.value.filter(klasse => hasSchool(klasse, day)).length
 }
 </script>
