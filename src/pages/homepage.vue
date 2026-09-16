@@ -23,8 +23,18 @@
             type="text"
             placeholder="Klassenname"
           >
-          <button type="submit">Erstellen</button>
-          <button type="button" @click="cancelCreateClass">Abbrechen</button>
+
+          <button type="submit">
+            Erstellen
+          </button>
+
+          <button type="button" @click="cancelCreateClass">
+            Abbrechen
+          </button>
+
+          <p v-if="classError">
+            {{ classError }}
+          </p>
         </form>
 
         <input
@@ -46,15 +56,22 @@
         <div>
           <h2>Wochenansicht</h2>
 
-          <button type="button" @click="changeYear(-1)">←</button>
-          <strong>{{ currentYear }}</strong>
-          <button type="button" @click="changeYear(1)">→</button>
+          <button type="button" @click="changeSchoolYear(-1)">
+            ←
+          </button>
+
+          <strong>{{ schoolYearLabel }}</strong>
+
+          <button type="button" @click="changeSchoolYear(1)">
+            →
+          </button>
         </div>
 
         <table>
           <thead>
           <tr>
             <th>Klasse</th>
+
             <th v-for="day in weekdays" :key="day">
               {{ day }}
             </th>
@@ -66,7 +83,10 @@
             <th>{{ klasse.name }}</th>
 
             <td v-for="day in weekdays" :key="day">
-              <button type="button" @click="toggleSchoolDay(klasse, day)">
+              <button
+                type="button"
+                @click="toggleSchoolDay(klasse, day)"
+              >
                 {{ hasSchool(klasse, day) ? 'Schule' : '-' }}
 
                 <span
@@ -83,8 +103,34 @@
           <tfoot>
           <tr>
             <th>Räume</th>
+
             <td v-for="day in weekdays" :key="day">
-              {{ getUsedRooms(day) }} / {{ roomCapacity }}
+              {{ getUsedRooms(day) }} / {{ getRoomCapacity(day) }}
+
+              <span
+                v-if="hasRoomConflict(day)"
+                :title="getRoomConflictText(day)"
+              >
+                  ⚠
+                </span>
+
+              <span>
+                  <button
+                    type="button"
+                    title="Raum hinzufügen"
+                    @click="changeRoomCapacity(day, 1)"
+                  >
+                    ▲
+                  </button>
+
+                  <button
+                    type="button"
+                    title="Raum entfernen"
+                    @click="changeRoomCapacity(day, -1)"
+                  >
+                    ▼
+                  </button>
+                </span>
             </td>
           </tr>
           </tfoot>
@@ -141,7 +187,9 @@
           </ul>
         </div>
 
-        <p v-else>Keine Klasse ausgewählt.</p>
+        <p v-else>
+          Keine Klasse ausgewählt.
+        </p>
       </aside>
     </main>
   </div>
@@ -150,7 +198,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-type Weekday = 'Montag' | 'Dienstag' | 'Mittwoch' | 'Donnerstag' | 'Freitag'
+type Weekday =
+  | 'Montag'
+  | 'Dienstag'
+  | 'Mittwoch'
+  | 'Donnerstag'
+  | 'Freitag'
 
 interface SchoolClass {
   id: number
@@ -164,10 +217,16 @@ interface ClassRule {
   classBId: number
 }
 
+interface RoomCapacity {
+  day: Weekday
+  capacity: number
+}
+
 interface YearData {
   year: number
   classes: SchoolClass[]
   rules: ClassRule[]
+  roomCapacities: RoomCapacity[]
 }
 
 const weekdays: Weekday[] = [
@@ -178,7 +237,6 @@ const weekdays: Weekday[] = [
   'Freitag'
 ]
 
-const roomCapacity = 5
 const currentYear = ref(2026)
 
 const years = ref<YearData[]>([
@@ -206,7 +264,14 @@ const years = ref<YearData[]>([
         schoolDays: ['Dienstag', 'Donnerstag', 'Freitag']
       }
     ],
-    rules: []
+    rules: [],
+    roomCapacities: [
+      { day: 'Montag', capacity: 6 },
+      { day: 'Dienstag', capacity: 6 },
+      { day: 'Mittwoch', capacity: 6 },
+      { day: 'Donnerstag', capacity: 6 },
+      { day: 'Freitag', capacity: 6 }
+    ]
   }
 ])
 
@@ -215,9 +280,12 @@ const selectedClassId = ref<number | null>(null)
 const selectedRuleClassId = ref<number | null>(null)
 const showCreateClass = ref(false)
 const newClassName = ref('')
+const classError = ref('')
 
 const currentYearData = computed(() =>
-  years.value.find(yearData => yearData.year === currentYear.value)
+  years.value.find(
+    yearData => yearData.year === currentYear.value
+  )
 )
 
 const classes = computed(() =>
@@ -228,14 +296,28 @@ const rules = computed(() =>
   currentYearData.value?.rules ?? []
 )
 
+const roomCapacities = computed(() =>
+  currentYearData.value?.roomCapacities ?? []
+)
+
+const schoolYearLabel = computed(() => {
+  const nextYear = String(currentYear.value + 1).slice(-2)
+
+  return `${currentYear.value}/${nextYear}`
+})
+
 const filteredClasses = computed(() =>
   classes.value.filter(klasse =>
-    klasse.name.toLowerCase().includes(searchQuery.value.toLowerCase())
+    klasse.name
+      .toLowerCase()
+      .includes(searchQuery.value.toLowerCase())
   )
 )
 
 const selectedClass = computed(() =>
-  classes.value.find(klasse => klasse.id === selectedClassId.value)
+  classes.value.find(
+    klasse => klasse.id === selectedClassId.value
+  )
 )
 
 const selectedClassRules = computed(() => {
@@ -251,7 +333,9 @@ const availableRuleClasses = computed(() => {
   if (!selectedClass.value) return []
 
   return classes.value.filter(klasse => {
-    if (klasse.id === selectedClass.value?.id) return false
+    if (klasse.id === selectedClass.value?.id) {
+      return false
+    }
 
     return !selectedClassRules.value.some(rule =>
       rule.classAId === klasse.id ||
@@ -268,7 +352,22 @@ function selectClass(classId: number) {
 function createClass() {
   const name = newClassName.value.trim()
 
-  if (!name || !currentYearData.value) return
+  classError.value = ''
+
+  if (!name || !currentYearData.value) {
+    return
+  }
+
+  const classAlreadyExists = classes.value.some(
+    klasse =>
+      klasse.name.trim().toLowerCase() ===
+      name.toLowerCase()
+  )
+
+  if (classAlreadyExists) {
+    classError.value = 'Eine Klasse mit diesem Namen existiert bereits.'
+    return
+  }
 
   currentYearData.value.classes.push({
     id: Date.now(),
@@ -282,14 +381,21 @@ function createClass() {
 
 function cancelCreateClass() {
   newClassName.value = ''
+  classError.value = ''
   showCreateClass.value = false
 }
 
-function hasSchool(klasse: SchoolClass, day: Weekday) {
+function hasSchool(
+  klasse: SchoolClass,
+  day: Weekday
+) {
   return klasse.schoolDays.includes(day)
 }
 
-function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
+function toggleSchoolDay(
+  klasse: SchoolClass,
+  day: Weekday
+) {
   if (hasSchool(klasse, day)) {
     klasse.schoolDays = klasse.schoolDays.filter(
       schoolDay => schoolDay !== day
@@ -300,7 +406,44 @@ function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
 }
 
 function getUsedRooms(day: Weekday) {
-  return classes.value.filter(klasse => hasSchool(klasse, day)).length
+  return classes.value.filter(
+    klasse => hasSchool(klasse, day)
+  ).length
+}
+
+function getRoomCapacity(day: Weekday) {
+  return roomCapacities.value.find(
+    room => room.day === day
+  )?.capacity ?? 0
+}
+
+function changeRoomCapacity(
+  day: Weekday,
+  amount: number
+) {
+  const room = roomCapacities.value.find(
+    room => room.day === day
+  )
+
+  if (!room) return
+
+  room.capacity = Math.max(
+    0,
+    room.capacity + amount
+  )
+}
+
+function hasRoomConflict(day: Weekday) {
+  return getUsedRooms(day) > getRoomCapacity(day)
+}
+
+function getRoomConflictText(day: Weekday) {
+  const missingRooms =
+    getUsedRooms(day) - getRoomCapacity(day)
+
+  return missingRooms === 1
+    ? '1 Raum zu wenig'
+    : `${missingRooms} Räume zu wenig`
 }
 
 function addRule() {
@@ -324,55 +467,79 @@ function addRule() {
 function removeRule(ruleId: number) {
   if (!currentYearData.value) return
 
-  currentYearData.value.rules = currentYearData.value.rules.filter(
-    rule => rule.id !== ruleId
-  )
+  currentYearData.value.rules =
+    currentYearData.value.rules.filter(
+      rule => rule.id !== ruleId
+    )
 }
 
-function getOtherClassId(rule: ClassRule, classId: number) {
+function getOtherClassId(
+  rule: ClassRule,
+  classId: number
+) {
   return rule.classAId === classId
     ? rule.classBId
     : rule.classAId
 }
 
-function getOtherClassName(rule: ClassRule, classId: number) {
-  const otherClassId = getOtherClassId(rule, classId)
+function getOtherClassName(
+  rule: ClassRule,
+  classId: number
+) {
+  const otherClassId =
+    getOtherClassId(rule, classId)
 
   return classes.value.find(
     klasse => klasse.id === otherClassId
   )?.name ?? 'Unbekannt'
 }
 
-function getConflictingClasses(klasse: SchoolClass, day: Weekday) {
-  if (!hasSchool(klasse, day)) return []
+function getConflictingClasses(
+  klasse: SchoolClass,
+  day: Weekday
+) {
+  if (!hasSchool(klasse, day)) {
+    return []
+  }
 
-  const classRules = rules.value.filter(rule =>
-    rule.classAId === klasse.id ||
-    rule.classBId === klasse.id
+  const classRules = rules.value.filter(
+    rule =>
+      rule.classAId === klasse.id ||
+      rule.classBId === klasse.id
   )
 
   return classRules
     .map(rule => {
-      const otherClassId = getOtherClassId(rule, klasse.id)
+      const otherClassId =
+        getOtherClassId(rule, klasse.id)
 
       return classes.value.find(
-        otherClass => otherClass.id === otherClassId
+        otherClass =>
+          otherClass.id === otherClassId
       )
     })
     .filter(
       (otherClass): otherClass is SchoolClass =>
-        otherClass !== undefined && hasSchool(otherClass, day)
+        otherClass !== undefined &&
+        hasSchool(otherClass, day)
     )
 }
 
-function hasConflict(klasse: SchoolClass, day: Weekday) {
-  return getConflictingClasses(klasse, day).length > 0
+function hasConflict(
+  klasse: SchoolClass,
+  day: Weekday
+) {
+  return getConflictingClasses(
+    klasse,
+    day
+  ).length > 0
 }
 
-function getConflictText(klasse: SchoolClass, day: Weekday) {
-  const conflictingClasses = getConflictingClasses(klasse, day)
-
-  return conflictingClasses
+function getConflictText(
+  klasse: SchoolClass,
+  day: Weekday
+) {
+  return getConflictingClasses(klasse, day)
     .map(
       otherClass =>
         `Konflikt zwischen ${klasse.name} und ${otherClass.name}`
@@ -380,24 +547,37 @@ function getConflictText(klasse: SchoolClass, day: Weekday) {
     .join('\n')
 }
 
-function changeYear(direction: number) {
-  const newYear = currentYear.value + direction
+function changeSchoolYear(direction: number) {
+  const newYear =
+    currentYear.value + direction
 
-  if (!years.value.some(yearData => yearData.year === newYear)) {
-    const copiedClasses: SchoolClass[] = classes.value.map(klasse => ({
-      id: klasse.id,
-      name: klasse.name,
-      schoolDays: [...klasse.schoolDays]
-    }))
+  if (
+    !years.value.some(
+      yearData => yearData.year === newYear
+    )
+  ) {
+    const copiedClasses: SchoolClass[] =
+      classes.value.map(klasse => ({
+        id: klasse.id,
+        name: klasse.name,
+        schoolDays: [...klasse.schoolDays]
+      }))
 
-    const copiedRules: ClassRule[] = rules.value.map(rule => ({
-      ...rule
-    }))
+    const copiedRules: ClassRule[] =
+      rules.value.map(rule => ({
+        ...rule
+      }))
+
+    const copiedRoomCapacities: RoomCapacity[] =
+      roomCapacities.value.map(room => ({
+        ...room
+      }))
 
     years.value.push({
       year: newYear,
       classes: copiedClasses,
-      rules: copiedRules
+      rules: copiedRules,
+      roomCapacities: copiedRoomCapacities
     })
   }
 
