@@ -1,0 +1,60 @@
+Endprodukt ist tage anzugucken.
+
+aufgrund von verschiedenen Informationen erstellen wir die spezifischen tage.
+
+imput: klasse,¨n, regeln, räume bzw. ressourcen
+
+Frage: wie einbauen?
+
+Schultage bleiben vom 1. und 2. Semester gleich.
+
+Quartal hat keinen einfluss auf tag.
+
+- ertsellt neue klasse und Lehrgang ims
+- Kopie wird erstellt
+- Kopie vom Lehrgang, keine klasse hat einfluss in die andere,
+
+
+q: veröndetr label dinge?
+a: nein, label ist z.b wayup klassr
+q: wie geht label vom Lehrgang aus? sonst label unnötig wenn z.b wayup legrgang kann sein
+a: wir haben kein seperate klasse als wayu sondern quas Achtung dort ist wayup.
+q: dachte für klasse, versteht nutzen von labls.
+a: labels so betrachten wie dort geht tex rein (art Notiz) und hat KEINEN EINFLUSS auf IRGENDETWAS. LABEL IST WIE NOTIZ. ES AHT KEINEN EINFLUSS AUF IRGENDETWAS.
+q: ---
+a: doch labels und Notizen, labels hat aber auf Notizen keinen einfluss. (z.b label: wayup, Notiz: ük kommt noch vor).
+a: wenn man auf Lehrgang geht dan sind die einzelnen jahre unterschiedlich. 
+q: wir machen ein Lehrgang, gibt Lehrgang ims, wenn wir jetzt klasse erstelle und ims auswähle und neue klase dann eifnach Kopie davon und in der klasse kan man module entfernt?
+a: anders mache: templae (z.b appli, paltofrom, ict, ims) und dort jeweils wie blueprint. sobald klasse erstellen dann sagen welchen bleuprint übernehme ich. ist wie ein muster und man kann wählen welches dort ist. 
+
+TL;DR
+
+BLUEPRINT (LEHRGANG) ==> KOPIE (KLASSE)
+
+a: Änderungen bei Klassen verändetr blueprint nicht. (neue blueprint kann erstellt werden). 
+q: wo könnte man Lehrgang von klasse bearebieten?
+a: dort bei Klassen Erstellung (bzw. evtl. neue Bearbeitung von klasse).
+
+
+Notiz: LAS sendet ganze Excel dokument von der Schule als hilfe. Auf Kenans request.
+
+q: sobald Lehrgang ausgewählt, könnte man so einen automatischen button hinzufügend er einen klassenspezifischen button hinzufügen?
+a: ja, würde ich ebarbeiten.
+a: oben gibt's Lehrgang, wenn ich Lehrgang anklicke dann Kopie von der klasse SELBST, NICHT VERÄNDERTER BLUEPRINT.
+q: anzahl lektione bei blueprint/klasse?
+a: JA
+
+Q: Mehr sinn wenn man alle module erstellt und dann via drga und drop bei lehrgänge einfügen. Oder driekt tabelle erstellen und benutzer kann leere Felder anklicken und selektieren?
+a: würde leere Felder. Lwktionen anzahl muss man nicht aber man kannd ie einsschreiben. (anzahl Lektionen hat keinen einfluss aber ist einfach geil ok?)
+q: wir müssen nicht wissen im welchen Lehrgang welche klasse?
+a: ne.
+q: Müssen wir einabuen im welchen jahr wir sind? und dann kann man auf das nächste jahr gehen und es wäre komplett leer? sollen wir einbauen wo die Klassen einfahc rüberkopiert werden und der benutzer kann sie ejweils löschen etc.
+a: wie eine Kopie vom aktuellen Lehrjahr, nicht automatisch gelöscht doer erstellt. der benutzer macht es.
+q: einfach Jahrgang + 1? oder kann man auch zurückkommen (historie)
+a: ja, keiene sorge braucvht keine speicher. nach 10/20 jahren kann man sagen ok mann ffängt es an zu löschen.
+
+a: templates bräuchte man dann nicht mehr.
+Q: bei der Klassen muss man aber eine von den auswählen? die wird jja auch im nöcshten jarh kopiert.
+a: templates muss man nicht kpieren, sie existieren immer (basically globale variabel)
+
+
