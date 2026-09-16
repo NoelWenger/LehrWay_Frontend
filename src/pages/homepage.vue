@@ -143,6 +143,25 @@
         <div v-if="selectedClass">
           <h3>{{ selectedClass.name }}</h3>
 
+          <form @submit.prevent="renameClass">
+            <label>
+              Klassenname
+
+              <input
+                v-model="editedClassName"
+                type="text"
+              >
+            </label>
+
+            <button type="submit">
+              Namen speichern
+            </button>
+
+            <p v-if="editClassError">
+              {{ editClassError }}
+            </p>
+          </form>
+
           <h4>Regeln</h4>
 
           <form @submit.prevent="addRule">
@@ -185,6 +204,13 @@
               </button>
             </li>
           </ul>
+
+          <button
+            type="button"
+            @click="deleteClass"
+          >
+            Klasse löschen
+          </button>
         </div>
 
         <p v-else>
@@ -281,6 +307,8 @@ const selectedRuleClassId = ref<number | null>(null)
 const showCreateClass = ref(false)
 const newClassName = ref('')
 const classError = ref('')
+const editedClassName = ref('')
+const editClassError = ref('')
 
 const currentYearData = computed(() =>
   years.value.find(
@@ -347,6 +375,13 @@ const availableRuleClasses = computed(() => {
 function selectClass(classId: number) {
   selectedClassId.value = classId
   selectedRuleClassId.value = null
+  editClassError.value = ''
+
+  const klasse = classes.value.find(
+    klasse => klasse.id === classId
+  )
+
+  editedClassName.value = klasse?.name ?? ''
 }
 
 function createClass() {
@@ -365,7 +400,8 @@ function createClass() {
   )
 
   if (classAlreadyExists) {
-    classError.value = 'Eine Klasse mit diesem Namen existiert bereits.'
+    classError.value =
+      'Eine Klasse mit diesem Namen existiert bereits.'
     return
   }
 
@@ -383,6 +419,61 @@ function cancelCreateClass() {
   newClassName.value = ''
   classError.value = ''
   showCreateClass.value = false
+}
+
+function renameClass() {
+  if (!selectedClass.value) return
+
+  const name = editedClassName.value.trim()
+
+  editClassError.value = ''
+
+  if (!name) {
+    editClassError.value =
+      'Der Klassenname darf nicht leer sein.'
+    return
+  }
+
+  const classAlreadyExists = classes.value.some(
+    klasse =>
+      klasse.id !== selectedClass.value?.id &&
+      klasse.name.trim().toLowerCase() ===
+      name.toLowerCase()
+  )
+
+  if (classAlreadyExists) {
+    editClassError.value =
+      'Eine Klasse mit diesem Namen existiert bereits.'
+    return
+  }
+
+  selectedClass.value.name = name
+  editedClassName.value = name
+}
+
+function deleteClass() {
+  if (!selectedClass.value || !currentYearData.value) {
+    return
+  }
+
+  const classId = selectedClass.value.id
+
+  currentYearData.value.classes =
+    currentYearData.value.classes.filter(
+      klasse => klasse.id !== classId
+    )
+
+  currentYearData.value.rules =
+    currentYearData.value.rules.filter(
+      rule =>
+        rule.classAId !== classId &&
+        rule.classBId !== classId
+    )
+
+  selectedClassId.value = null
+  selectedRuleClassId.value = null
+  editedClassName.value = ''
+  editClassError.value = ''
 }
 
 function hasSchool(
@@ -584,5 +675,7 @@ function changeSchoolYear(direction: number) {
   currentYear.value = newYear
   selectedClassId.value = null
   selectedRuleClassId.value = null
+  editedClassName.value = ''
+  editClassError.value = ''
 }
 </script>
