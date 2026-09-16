@@ -87,24 +87,20 @@
 
           <h3>Lehrplan</h3>
 
+          <p>
+            Klicke auf ein Quartal, um ein Feld zu erstellen.
+            Klicke danach auf ein zweites Quartal desselben Moduls,
+            um mehrere Quartale zu verbinden.
+          </p>
+
           <table>
             <thead>
             <tr>
-              <th rowspan="3">
-                Module
-              </th>
+              <th rowspan="3">Module</th>
 
-              <th colspan="4">
-                Lehrjahr 1
-              </th>
-
-              <th colspan="4">
-                Lehrjahr 2
-              </th>
-
-              <th colspan="4">
-                Lehrjahr 3
-              </th>
+              <th colspan="4">Lehrjahr 1</th>
+              <th colspan="4">Lehrjahr 2</th>
+              <th colspan="4">Lehrjahr 3</th>
             </tr>
 
             <tr>
@@ -145,23 +141,69 @@
                 </button>
               </th>
 
-              <td
+              <template
                 v-for="quarter in quarters"
                 :key="quarter"
               >
-                <button
-                  type="button"
-                  @click="selectQuarter(module.id, quarter)"
+                <td
+                  v-if="shouldRenderQuarter(module, quarter)"
+                  :colspan="getFieldAtStart(module, quarter)?.quarterSpan ?? 1"
                 >
-                  {{ isQuarterSelected(module.id, quarter) ? '●' : '○' }}
-                </button>
-              </td>
+                  <div v-if="getFieldAtStart(module, quarter)">
+                    <input
+                      v-model.number="getFieldAtStart(module, quarter)!.lessons"
+                      type="number"
+                      min="0"
+                      placeholder="Lektionen"
+                    >
+
+                    <button
+                      type="button"
+                      @click="removeField(
+                          module,
+                          getFieldAtStart(module, quarter)!.id
+                        )"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <button
+                    v-else
+                    type="button"
+                    @click="handleQuarterClick(module, quarter)"
+                  >
+                    {{
+                      isSelectionStart(module.id, quarter)
+                        ? '●'
+                        : '+'
+                    }}
+                  </button>
+                </td>
+              </template>
             </tr>
             </tbody>
           </table>
 
           <p v-if="selectedCourse.modules.length === 0">
             Noch keine Module vorhanden.
+          </p>
+
+          <p v-if="selection">
+            Startquartal Q{{ selection.startQuarter }} ausgewählt.
+            Wähle ein zweites freies Quartal im gleichen Modul.
+          </p>
+
+          <button
+            v-if="selection"
+            type="button"
+            @click="cancelSelection"
+          >
+            Auswahl abbrechen
+          </button>
+
+          <p v-if="fieldError">
+            {{ fieldError }}
           </p>
 
           <form @submit.prevent="addModule">
@@ -201,9 +243,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+interface CourseField {
+  id: number
+  startQuarter: number
+  quarterSpan: number
+  lessons: number | null
+}
+
 interface CourseModule {
   id: number
   name: string
+  fields: CourseField[]
 }
 
 interface Course {
@@ -212,9 +262,9 @@ interface Course {
   modules: CourseModule[]
 }
 
-interface SelectedQuarter {
+interface QuarterSelection {
   moduleId: number
-  quarter: number
+  startQuarter: number
 }
 
 const quarters = [
@@ -230,15 +280,18 @@ const courses = ref<Course[]>([
     modules: [
       {
         id: 101,
-        name: 'M117'
+        name: 'M117',
+        fields: []
       },
       {
         id: 102,
-        name: 'M122'
+        name: 'M122',
+        fields: []
       },
       {
         id: 103,
-        name: 'M164'
+        name: 'M164',
+        fields: []
       }
     ]
   },
@@ -266,8 +319,9 @@ const editCourseError = ref('')
 
 const newModuleName = ref('')
 const moduleError = ref('')
+const fieldError = ref('')
 
-const selectedQuarter = ref<SelectedQuarter | null>(null)
+const selection = ref<QuarterSelection | null>(null)
 
 const filteredCourses = computed(() =>
   courses.value.filter(course =>
@@ -286,9 +340,10 @@ const selectedCourse = computed(() =>
 function selectCourse(courseId: number) {
   selectedCourseId.value = courseId
 
+  selection.value = null
   editCourseError.value = ''
   moduleError.value = ''
-  selectedQuarter.value = null
+  fieldError.value = ''
 
   const course = courses.value.find(
     course => course.id === courseId
@@ -376,11 +431,12 @@ function deleteCourse() {
   )
 
   selectedCourseId.value = null
+  selection.value = null
   editedCourseName.value = ''
   editCourseError.value = ''
   newModuleName.value = ''
   moduleError.value = ''
-  selectedQuarter.value = null
+  fieldError.value = ''
 }
 
 function addModule() {
@@ -411,7 +467,8 @@ function addModule() {
 
   selectedCourse.value.modules.push({
     id: Date.now(),
-    name
+    name,
+    fields: []
   })
 
   newModuleName.value = ''
@@ -425,38 +482,183 @@ function removeModule(moduleId: number) {
       module => module.id !== moduleId
     )
 
-  if (
-    selectedQuarter.value?.moduleId === moduleId
-  ) {
-    selectedQuarter.value = null
+  if (selection.value?.moduleId === moduleId) {
+    selection.value = null
   }
 }
 
-function selectQuarter(
-  moduleId: number,
+function handleQuarterClick(
+  module: CourseModule,
   quarter: number
 ) {
-  if (
-    selectedQuarter.value?.moduleId === moduleId &&
-    selectedQuarter.value?.quarter === quarter
-  ) {
-    selectedQuarter.value = null
+  fieldError.value = ''
+
+  if (isQuarterOccupied(module, quarter)) {
+    fieldError.value =
+      'Dieses Quartal ist bereits belegt.'
     return
   }
 
-  selectedQuarter.value = {
-    moduleId,
-    quarter
+  if (!selection.value) {
+    selection.value = {
+      moduleId: module.id,
+      startQuarter: quarter
+    }
+
+    return
   }
+
+  if (selection.value.moduleId !== module.id) {
+    selection.value = {
+      moduleId: module.id,
+      startQuarter: quarter
+    }
+
+    return
+  }
+
+  const startQuarter = Math.min(
+    selection.value.startQuarter,
+    quarter
+  )
+
+  const endQuarter = Math.max(
+    selection.value.startQuarter,
+    quarter
+  )
+
+  if (
+    !isRangeAvailable(
+      module,
+      startQuarter,
+      endQuarter
+    )
+  ) {
+    fieldError.value =
+      'Zwischen diesen Quartalen befindet sich bereits ein anderes Feld.'
+
+    return
+  }
+
+  createField(
+    module,
+    startQuarter,
+    endQuarter
+  )
+
+  selection.value = null
 }
 
-function isQuarterSelected(
+function createField(
+  module: CourseModule,
+  startQuarter: number,
+  endQuarter: number
+) {
+  module.fields.push({
+    id: Date.now(),
+    startQuarter,
+    quarterSpan:
+      endQuarter - startQuarter + 1,
+    lessons: null
+  })
+}
+
+function removeField(
+  module: CourseModule,
+  fieldId: number
+) {
+  module.fields = module.fields.filter(
+    field => field.id !== fieldId
+  )
+
+  fieldError.value = ''
+}
+
+function cancelSelection() {
+  selection.value = null
+  fieldError.value = ''
+}
+
+function getFieldAtStart(
+  module: CourseModule,
+  quarter: number
+) {
+  return module.fields.find(
+    field =>
+      field.startQuarter === quarter
+  )
+}
+
+function getFieldAtQuarter(
+  module: CourseModule,
+  quarter: number
+) {
+  return module.fields.find(field => {
+    const endQuarter =
+      field.startQuarter +
+      field.quarterSpan -
+      1
+
+    return (
+      quarter >= field.startQuarter &&
+      quarter <= endQuarter
+    )
+  })
+}
+
+function isQuarterOccupied(
+  module: CourseModule,
+  quarter: number
+) {
+  return (
+    getFieldAtQuarter(
+      module,
+      quarter
+    ) !== undefined
+  )
+}
+
+function isRangeAvailable(
+  module: CourseModule,
+  startQuarter: number,
+  endQuarter: number
+) {
+  for (
+    let quarter = startQuarter;
+    quarter <= endQuarter;
+    quarter++
+  ) {
+    if (isQuarterOccupied(module, quarter)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function shouldRenderQuarter(
+  module: CourseModule,
+  quarter: number
+) {
+  const field = getFieldAtQuarter(
+    module,
+    quarter
+  )
+
+  if (!field) {
+    return true
+  }
+
+  return field.startQuarter === quarter
+}
+
+function isSelectionStart(
   moduleId: number,
   quarter: number
 ) {
   return (
-    selectedQuarter.value?.moduleId === moduleId &&
-    selectedQuarter.value?.quarter === quarter
+    selection.value?.moduleId === moduleId &&
+    selection.value?.startQuarter === quarter
   )
 }
 </script>
