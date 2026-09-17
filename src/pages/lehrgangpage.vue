@@ -96,11 +96,21 @@
           <table>
             <thead>
             <tr>
-              <th rowspan="3">Module</th>
+              <th rowspan="3">
+                Module
+              </th>
 
-              <th colspan="4">Lehrjahr 1</th>
-              <th colspan="4">Lehrjahr 2</th>
-              <th colspan="4">Lehrjahr 3</th>
+              <th colspan="4">
+                Lehrjahr 1
+              </th>
+
+              <th colspan="4">
+                Lehrjahr 2
+              </th>
+
+              <th colspan="4">
+                Lehrjahr 3
+              </th>
             </tr>
 
             <tr>
@@ -147,24 +157,61 @@
               >
                 <td
                   v-if="shouldRenderQuarter(module, quarter)"
-                  :colspan="getFieldAtStart(module, quarter)?.quarterSpan ?? 1"
+                  :colspan="
+                      getFieldAtStart(module, quarter)?.quarterSpan ?? 1
+                    "
                 >
                   <div v-if="getFieldAtStart(module, quarter)">
-                    <input
-                      v-model.number="getFieldAtStart(module, quarter)!.lessons"
-                      type="number"
-                      min="0"
-                      placeholder="Lektionen"
+                    <template
+                      v-if="
+                          editingFieldId ===
+                          getFieldAtStart(module, quarter)!.id
+                        "
                     >
+                      <input
+                        v-model.number="
+                            getFieldAtStart(module, quarter)!.lessons
+                          "
+                        type="number"
+                        min="0"
+                        placeholder="Lektionen"
+                      >
+
+                      <button
+                        type="button"
+                        @click="finishEditingField"
+                      >
+                        Speichern
+                      </button>
+
+                      <button
+                        type="button"
+                        @click="
+                            removeField(
+                              module,
+                              getFieldAtStart(module, quarter)!.id
+                            )
+                          "
+                      >
+                        Löschen
+                      </button>
+                    </template>
 
                     <button
+                      v-else
                       type="button"
-                      @click="removeField(
-                          module,
-                          getFieldAtStart(module, quarter)!.id
-                        )"
+                      @click="
+                          editField(
+                            getFieldAtStart(module, quarter)!.id
+                          )
+                        "
                     >
-                      ×
+                      {{
+                        getFieldAtStart(module, quarter)!.lessons !== null
+                          ? getFieldAtStart(module, quarter)!.lessons +
+                          ' Lektionen'
+                          : 'Lektionen eintragen'
+                      }}
                     </button>
                   </div>
 
@@ -189,18 +236,19 @@
             Noch keine Module vorhanden.
           </p>
 
-          <p v-if="selection">
-            Startquartal Q{{ selection.startQuarter }} ausgewählt.
-            Wähle ein zweites freies Quartal im gleichen Modul.
-          </p>
+          <div v-if="selection">
+            <p>
+              Startquartal Q{{ selection.startQuarter }} ausgewählt.
+              Wähle ein zweites freies Quartal im gleichen Modul.
+            </p>
 
-          <button
-            v-if="selection"
-            type="button"
-            @click="cancelSelection"
-          >
-            Auswahl abbrechen
-          </button>
+            <button
+              type="button"
+              @click="cancelSelection"
+            >
+              Auswahl abbrechen
+            </button>
+          </div>
 
           <p v-if="fieldError">
             {{ fieldError }}
@@ -322,6 +370,7 @@ const moduleError = ref('')
 const fieldError = ref('')
 
 const selection = ref<QuarterSelection | null>(null)
+const editingFieldId = ref<number | null>(null)
 
 const filteredCourses = computed(() =>
   courses.value.filter(course =>
@@ -341,6 +390,7 @@ function selectCourse(courseId: number) {
   selectedCourseId.value = courseId
 
   selection.value = null
+  editingFieldId.value = null
   editCourseError.value = ''
   moduleError.value = ''
   fieldError.value = ''
@@ -382,6 +432,7 @@ function createCourse() {
   })
 
   newCourseName.value = ''
+  createCourseError.value = ''
   showCreateCourse.value = false
 }
 
@@ -432,6 +483,7 @@ function deleteCourse() {
 
   selectedCourseId.value = null
   selection.value = null
+  editingFieldId.value = null
   editedCourseName.value = ''
   editCourseError.value = ''
   newModuleName.value = ''
@@ -536,7 +588,6 @@ function handleQuarterClick(
   ) {
     fieldError.value =
       'Zwischen diesen Quartalen befindet sich bereits ein anderes Feld.'
-
     return
   }
 
@@ -554,13 +605,25 @@ function createField(
   startQuarter: number,
   endQuarter: number
 ) {
-  module.fields.push({
+  const newField: CourseField = {
     id: Date.now(),
     startQuarter,
     quarterSpan:
       endQuarter - startQuarter + 1,
     lessons: null
-  })
+  }
+
+  module.fields.push(newField)
+
+  editingFieldId.value = newField.id
+}
+
+function editField(fieldId: number) {
+  editingFieldId.value = fieldId
+}
+
+function finishEditingField() {
+  editingFieldId.value = null
 }
 
 function removeField(
@@ -570,6 +633,10 @@ function removeField(
   module.fields = module.fields.filter(
     field => field.id !== fieldId
   )
+
+  if (editingFieldId.value === fieldId) {
+    editingFieldId.value = null
+  }
 
   fieldError.value = ''
 }
