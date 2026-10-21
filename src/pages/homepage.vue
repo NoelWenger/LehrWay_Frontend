@@ -102,7 +102,7 @@ const availableRuleClasses = computed(() =>
     !selectedClassRules.value.some(rule =>
       rule.classAId === klasse.id || rule.classBId === klasse.id
     )
-  )
+  )s
 )
 
 function getError(error: unknown): string {
