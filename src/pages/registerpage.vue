@@ -7,18 +7,37 @@ const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
 
-const handleRegister = () => {
+const handleRegister = async () => {
   if (password.value !== passwordConfirm.value)
   {
     alert("Passwort stimmt nicht überein")
     return
   }
+  try {
+    const response = await fetch('http://localhost:3000/api/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email.value,
+        password: password.value,
+      }),
+    })
 
-  console.log('Eingegebene E-Mail:', email.value)
-  console.log('Eingegebenes Passwort:', password.value)
-  console.log('Eingegebene Passwort Bestätigung:', passwordConfirm.value)
+    const data = await response.json()
+    console.log('Antwort vom Backend:', data)
 
-  router.push('/home')
+    if (response.ok && data.success) {
+      alert("Registrierung erfolgreich! Bitte logge dich ein.")
+      router.push('/') // Leitet zur Login-Seite weiter
+    } else {
+      alert(data.message || "Registrierung fehlgeschlagen!")
+    }
+  } catch (error) {
+    console.error("Verbindungsfehler:", error)
+    alert("Server ist nicht erreichbar! Läuft dein Backend?")
+  }
 }
 
 </script>
