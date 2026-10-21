@@ -6,6 +6,7 @@ import { request, json } from '../services/lehrway-api'
 interface CourseField {
   id: number
   startQuarter: number
+  quarterSpan: number
   lessons: number
 }
 
@@ -34,8 +35,14 @@ interface DBModul {
   lehrjahr: number
   semester: number
   quartal: number
+  quartal_span: number
   lektionen: number | null
   lehrgang_id: number
+}
+
+interface QuarterSelection {
+  moduleId: number
+  startQuarter: number
 }
 
 const quarters = Array.from({ length: 12 }, (_, i) => i + 1)
@@ -58,6 +65,7 @@ const editCourseError = ref('')
 const moduleError = ref('')
 const fieldError = ref('')
 
+const selection = ref<QuarterSelection | null>(null)
 const editingFieldId = ref<number | null>(null)
 const editedLessons = ref(0)
 
@@ -77,12 +85,11 @@ function getError(error: unknown) {
     : 'Ein unbekannter Fehler ist aufgetreten.'
 }
 
-// Datenbank-Quartal in Tabellenposition umrechnen
+// Quartalsposition berechnen
 function getGlobalQuarter(module: DBModul) {
   return (module.lehrjahr - 1) * 4 + module.quartal
 }
 
-// Tabellenposition in Datenbankwerte umrechnen
 function toDBQuarter(quarter: number) {
   const lehrjahr = Math.floor((quarter - 1) / 4) + 1
   const quartal = ((quarter - 1) % 4) + 1
@@ -91,7 +98,7 @@ function toDBQuarter(quarter: number) {
   return { lehrjahr, semester, quartal }
 }
 
-// Lehrgänge und Module aus der Datenbank laden
+// Lehrgänge und Module aus MariaDB laden
 async function loadCourses() {
   loading.value = true
   apiError.value = ''
@@ -105,8 +112,6 @@ async function loadCourses() {
           `/lehrgaenge/${course.id}/module`
         )
 
-        // Datenbankeinträge mit gleichem Modulnamen
-        // als eine Zeile im Lehrplan anzeigen.
         const moduleMap = new Map<string, CourseModule>()
 
         for (const entry of dbModules) {
@@ -125,6 +130,7 @@ async function loadCourses() {
           module.fields.push({
             id: entry.id,
             startQuarter: getGlobalQuarter(entry),
+            quarterSpan: entry.quartal_span ?? 1,
             lessons: entry.lektionen ?? 0
           })
         }
@@ -152,9 +158,11 @@ async function loadCourses() {
   }
 }
 
+// Lehrgang auswählen
 function selectCourse(id: number) {
   selectedCourseId.value = id
   editedCourseName.value = selectedCourse.value?.name ?? ''
+  selection.value = null
   editingFieldId.value = null
   editCourseError.value = ''
   moduleError.value = ''
@@ -257,8 +265,9 @@ async function deleteCourse() {
     )
 
     selectedCourseId.value = null
-    editedCourseName.value = ''
+    selection.value = null
     editingFieldId.value = null
+    editedCourseName.value = ''
     await loadCourses()
   } catch (error) {
     apiError.value = getError(error)
@@ -267,7 +276,7 @@ async function deleteCourse() {
   }
 }
 
-// Neues Modul erstellen
+// Modul erstellen
 async function addModule() {
   if (!selectedCourse.value) return
 
@@ -289,13 +298,12 @@ async function addModule() {
   saving.value = true
 
   try {
-    // Die Datenbank hat keine separate Modultabelle.
-    // Deshalb wird das Modul zunächst im ersten Quartal erstellt.
     await request(
       `/lehrgaenge/${selectedCourse.value.id}/module`,
       json('POST', {
         bezeichnung: name,
         ...toDBQuarter(1),
+        quartal_span: 1,
         lektionen: 0
       })
     )
@@ -309,7 +317,7 @@ async function addModule() {
   }
 }
 
-// Alle Datenbankeinträge eines Moduls löschen
+// Modul entfernen
 async function removeModule(module: CourseModule) {
   if (!confirm(`Möchtest du das Modul "${module.name}" löschen?`)) {
     return
@@ -323,6 +331,10 @@ async function removeModule(module: CourseModule) {
       await request(`/lehrgang-module/${field.id}`, json('DELETE'))
     }
 
+    if (selection.value?.moduleId === module.id) {
+      selection.value = null
+    }
+
     await loadCourses()
   } catch (error) {
     moduleError.value = getError(error)
@@ -332,12 +344,34 @@ async function removeModule(module: CourseModule) {
   }
 }
 
-// Einzelnes Quartal erstellen
-async function createField(module: CourseModule, quarter: number) {
-  if (!selectedCourse.value) return
-  if (getFieldAtQuarter(module, quarter)) return
+// Quartale auswählen und verbinden
+async function handleQuarterClick(module: CourseModule, quarter: number) {
+  if (!selectedCourse.value || saving.value) return
 
   fieldError.value = ''
+
+  if (getFieldAtQuarter(module, quarter)) {
+    fieldError.value = 'Dieses Quartal ist bereits belegt.'
+    return
+  }
+
+  if (!selection.value || selection.value.moduleId !== module.id) {
+    selection.value = {
+      moduleId: module.id,
+      startQuarter: quarter
+    }
+    return
+  }
+
+  const start = Math.min(selection.value.startQuarter, quarter)
+  const end = Math.max(selection.value.startQuarter, quarter)
+
+  if (!isRangeAvailable(module, start, end)) {
+    fieldError.value =
+      'Zwischen diesen Quartalen befindet sich bereits ein anderes Feld.'
+    return
+  }
+
   saving.value = true
 
   try {
@@ -345,11 +379,13 @@ async function createField(module: CourseModule, quarter: number) {
       `/lehrgaenge/${selectedCourse.value.id}/module`,
       json('POST', {
         bezeichnung: module.name,
-        ...toDBQuarter(quarter),
+        ...toDBQuarter(start),
+        quartal_span: end - start + 1,
         lektionen: 0
       })
     )
 
+    selection.value = null
     await loadCourses()
   } catch (error) {
     fieldError.value = getError(error)
@@ -391,9 +427,9 @@ async function finishEditingField() {
   }
 }
 
-// Quartal löschen
+// Einzelnes Feld löschen
 async function removeField(fieldId: number) {
-  if (!confirm('Möchtest du dieses Quartal löschen?')) return
+  if (!confirm('Möchtest du dieses Quartalsfeld löschen?')) return
 
   saving.value = true
   fieldError.value = ''
@@ -409,8 +445,38 @@ async function removeField(fieldId: number) {
   }
 }
 
-function getFieldAtQuarter(module: CourseModule, quarter: number) {
+// Hilfsfunktionen für die Quartalstabelle
+function getFieldAtStart(module: CourseModule, quarter: number) {
   return module.fields.find(field => field.startQuarter === quarter)
+}
+
+function getFieldAtQuarter(module: CourseModule, quarter: number) {
+  return module.fields.find(field =>
+    quarter >= field.startQuarter &&
+    quarter < field.startQuarter + field.quarterSpan
+  )
+}
+
+function isRangeAvailable(module: CourseModule, start: number, end: number) {
+  for (let quarter = start; quarter <= end; quarter++) {
+    if (getFieldAtQuarter(module, quarter)) return false
+  }
+  return true
+}
+
+function shouldRenderQuarter(module: CourseModule, quarter: number) {
+  const field = getFieldAtQuarter(module, quarter)
+  return !field || field.startQuarter === quarter
+}
+
+function isSelectionStart(moduleId: number, quarter: number) {
+  return selection.value?.moduleId === moduleId &&
+    selection.value?.startQuarter === quarter
+}
+
+function cancelSelection() {
+  selection.value = null
+  fieldError.value = ''
 }
 
 onMounted(loadCourses)
@@ -418,7 +484,7 @@ onMounted(loadCourses)
 
 <template>
   <div class="page-shell">
-    <!-- Navigation -->
+    <!-- Navbar -->
     <header class="site-header">
       <div class="header-inner">
         <router-link to="/home" class="brand">
@@ -546,8 +612,9 @@ onMounted(loadCourses)
 
           <h3>Lehrplan</h3>
           <p class="help-text">
-            Klicke auf +, um ein Quartal zu erstellen.
-            Anschliessend kannst du die Lektionen eintragen.
+            Klicke auf ein freies Quartal, um den Start auszuwählen.
+            Klicke danach auf ein zweites Quartal desselben Moduls,
+            um mehrere Quartale miteinander zu verbinden.
           </p>
 
           <div class="table-wrapper">
@@ -595,66 +662,74 @@ onMounted(loadCourses)
                   </button>
                 </th>
 
-                <td v-for="quarter in quarters" :key="quarter">
-                  <template v-if="getFieldAtQuarter(module, quarter)">
-                    <div
-                      v-if="editingFieldId === getFieldAtQuarter(module, quarter)!.id"
-                      class="lesson-editor"
-                    >
-                      <input
-                        v-model.number="editedLessons"
-                        type="number"
-                        min="0"
-                        placeholder="Lektionen"
+                <template v-for="quarter in quarters" :key="quarter">
+                  <td
+                    v-if="shouldRenderQuarter(module, quarter)"
+                    :colspan="getFieldAtStart(module, quarter)?.quarterSpan ?? 1"
+                  >
+                    <!-- Bereits belegtes Quartalsfeld -->
+                    <template v-if="getFieldAtStart(module, quarter)">
+                      <div
+                        v-if="editingFieldId === getFieldAtStart(module, quarter)!.id"
+                        class="lesson-editor"
                       >
+                        <input
+                          v-model.number="editedLessons"
+                          type="number"
+                          min="0"
+                          placeholder="Lektionen"
+                        >
+
+                        <button
+                          type="button"
+                          :disabled="saving"
+                          @click="finishEditingField"
+                        >
+                          Speichern
+                        </button>
+
+                        <button
+                          type="button"
+                          @click="editingFieldId = null"
+                        >
+                          Abbrechen
+                        </button>
+
+                        <button
+                          type="button"
+                          class="danger-button"
+                          :disabled="saving"
+                          @click="removeField(getFieldAtStart(module, quarter)!.id)"
+                        >
+                          Löschen
+                        </button>
+                      </div>
 
                       <button
+                        v-else
                         type="button"
+                        class="lesson-button"
                         :disabled="saving"
-                        @click="finishEditingField"
+                        @click="editField(getFieldAtStart(module, quarter)!)"
                       >
-                        Speichern
+                        {{ getFieldAtStart(module, quarter)!.lessons }}
+                        Lektionen
                       </button>
+                    </template>
 
-                      <button
-                        type="button"
-                        @click="editingFieldId = null"
-                      >
-                        Abbrechen
-                      </button>
-
-                      <button
-                        type="button"
-                        class="danger-button"
-                        :disabled="saving"
-                        @click="removeField(getFieldAtQuarter(module, quarter)!.id)"
-                      >
-                        Löschen
-                      </button>
-                    </div>
-
+                    <!-- Freies Quartal -->
                     <button
                       v-else
                       type="button"
-                      class="lesson-button"
+                      class="quarter-button"
+                      :class="{ selected: isSelectionStart(module.id, quarter) }"
                       :disabled="saving"
-                      @click="editField(getFieldAtQuarter(module, quarter)!)"
+                      @click="handleQuarterClick(module, quarter)"
                     >
-                      {{ getFieldAtQuarter(module, quarter)!.lessons }}
-                      Lektionen
+                      {{ isSelectionStart(module.id, quarter) ? '●' : '+' }}
                     </button>
-                  </template>
-
-                  <button
-                    v-else
-                    type="button"
-                    class="quarter-button"
-                    :disabled="saving"
-                    @click="createField(module, quarter)"
-                  >
-                    +
-                  </button>
-                </td>
+                  </td>
+                </template>
               </tr>
               </tbody>
             </table>
@@ -664,10 +739,23 @@ onMounted(loadCourses)
             Noch keine Module vorhanden.
           </p>
 
+          <!-- Anzeige der Quartalsauswahl -->
+          <div v-if="selection" class="selection-notice">
+            <p>
+              Startquartal Q{{ selection.startQuarter }} ausgewählt.
+              Wähle ein zweites freies Quartal im gleichen Modul.
+            </p>
+
+            <button type="button" @click="cancelSelection">
+              Auswahl abbrechen
+            </button>
+          </div>
+
           <p v-if="fieldError" class="error-message">
             {{ fieldError }}
           </p>
 
+          <!-- Modul hinzufügen -->
           <form class="form-stack module-form" @submit.prevent="addModule">
             <label for="module-name">Neues Modul</label>
 
@@ -835,7 +923,7 @@ onMounted(loadCourses)
   font-size: 17px;
 }
 
-/* Formulare */
+/* Formulare und Buttons */
 button {
   cursor: pointer;
   font-family: inherit;
@@ -946,6 +1034,7 @@ tbody th {
   font-weight: 600;
 }
 
+/* Quartale und Lektionen */
 .quarter-button {
   width: 100%;
   min-width: 32px;
@@ -958,6 +1047,11 @@ tbody th {
 
 .quarter-button:hover:not(:disabled) {
   background: #dbeafe;
+}
+
+.quarter-button.selected {
+  background: #2563eb;
+  color: white;
 }
 
 .lesson-button {
@@ -982,6 +1076,14 @@ tbody th {
 
 .lesson-editor button {
   padding: 6px;
+}
+
+.selection-notice {
+  padding: 12px 16px;
+  margin: 16px 0;
+  background: #eff6ff;
+  border-radius: 10px;
+  color: #1d4ed8;
 }
 
 .help-text {
@@ -1047,7 +1149,7 @@ hr {
   text-align: right;
 }
 
-/* Responsive */
+/* Responsive Design */
 @media (max-width: 1100px) {
   .page-main {
     grid-template-columns: 220px minmax(0, 1fr);
