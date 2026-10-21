@@ -1,9 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+
 import loginpage from '@/pages/loginpage.vue'
+
 import registerpage from '@/pages/registerpage.vue'
+
 import homepage from '@/pages/homepage.vue'
+
 import lehrgangpage from '@/pages/lehrgangpage.vue'
+
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -28,7 +33,25 @@ const router = createRouter({
       name: 'lehrgang',
       component: lehrgangpage
     },
+    {
+      path: '/lehrgang',
+      name: 'lehrgang',
+      component: lehrgangpage
+    },
+    {
+      path: '/lehrgang',
+      name: 'lehrgang',
+      component: lehrgangpage
+    },
+    {
+      path: '/lehrgang',
+      name: 'lehrgang',
+      component: lehrgangpage
+    },
   ],
 })
+
+
+
 
 export default router
