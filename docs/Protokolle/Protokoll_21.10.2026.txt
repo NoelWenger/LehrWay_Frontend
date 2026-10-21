@@ -1,0 +1,10 @@
+Protokoll
+Kenan & Luka v. Herr Lagger
+
+Über: Statusreport 1
+
+Fazit:
+
+- Eigentlich alles gut
+- Paar ästhethische Kleinigkeiten
+- Frage über Mock Daten >>> Weil wir Funktionen testen wollen.
