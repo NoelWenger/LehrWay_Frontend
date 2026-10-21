@@ -1,15 +1,25 @@
-<template>
-  <div>
-    <header>
-      <h1>Lehrway</h1>
 
-      <nav>
-        <router-link to="/home">Wochenplan</router-link>
-        <router-link to="/lehrgang">Lehrgänge</router-link>
-      </nav>
+<template>
+  <div class="page-shell">
+    <header class="site-header">
+      <div class="header-inner">
+        <router-link to="/home" class="brand">
+          Lehr<span>way</span>
+        </router-link>
+
+        <nav class="site-nav" aria-label="Hauptnavigation">
+          <router-link to="/home" class="nav-link">Wochenplan</router-link>
+          <router-link to="/lehrgang" class="nav-link">Lehrgänge</router-link>
+        </nav>
+      </div>
     </header>
 
-    <main>
+    <div class="page-intro">
+      <h1>Lehrgänge verwalten</h1>
+      <p>Organisiere Lehrgänge, Module und Lektionen.</p>
+    </div>
+
+    <main class="page-main">
       <aside>
         <h2>Lehrgänge</h2>
 
@@ -23,18 +33,9 @@
             type="text"
             placeholder="Lehrgangsname"
           >
-
-          <button type="submit">
-            Erstellen
-          </button>
-
-          <button type="button" @click="cancelCreateCourse">
-            Abbrechen
-          </button>
-
-          <p v-if="createCourseError">
-            {{ createCourseError }}
-          </p>
+          <button type="submit">Erstellen</button>
+          <button type="button" @click="cancelCreateCourse">Abbrechen</button>
+          <p v-if="createCourseError">{{ createCourseError }}</p>
         </form>
 
         <input
@@ -44,14 +45,8 @@
         >
 
         <ul>
-          <li
-            v-for="course in filteredCourses"
-            :key="course.id"
-          >
-            <button
-              type="button"
-              @click="selectCourse(course.id)"
-            >
+          <li v-for="course in filteredCourses" :key="course.id">
+            <button type="button" @click="selectCourse(course.id)">
               {{ course.name }}
             </button>
           </li>
@@ -67,192 +62,135 @@
           <form @submit.prevent="renameCourse">
             <label>
               Lehrgangsname
-
-              <input
-                v-model="editedCourseName"
-                type="text"
-              >
+              <input v-model="editedCourseName" type="text">
             </label>
-
-            <button type="submit">
-              Namen speichern
-            </button>
-
-            <p v-if="editCourseError">
-              {{ editCourseError }}
-            </p>
+            <button type="submit">Namen speichern</button>
+            <p v-if="editCourseError">{{ editCourseError }}</p>
           </form>
 
           <hr>
 
           <h3>Lehrplan</h3>
-
           <p>
             Klicke auf ein Quartal, um ein Feld zu erstellen.
             Klicke danach auf ein zweites Quartal desselben Moduls,
             um mehrere Quartale zu verbinden.
           </p>
 
-          <table>
-            <thead>
-            <tr>
-              <th rowspan="3">
-                Module
-              </th>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+              <tr>
+                <th rowspan="3">Module</th>
+                <th colspan="4">Lehrjahr 1</th>
+                <th colspan="4">Lehrjahr 2</th>
+                <th colspan="4">Lehrjahr 3</th>
+              </tr>
+              <tr>
+                <th colspan="2">Semester 1</th>
+                <th colspan="2">Semester 2</th>
+                <th colspan="2">Semester 3</th>
+                <th colspan="2">Semester 4</th>
+                <th colspan="2">Semester 5</th>
+                <th colspan="2">Semester 6</th>
+              </tr>
+              <tr>
+                <th v-for="quarter in quarters" :key="quarter">
+                  Q{{ quarter }}
+                </th>
+              </tr>
+              </thead>
 
-              <th colspan="4">
-                Lehrjahr 1
-              </th>
-
-              <th colspan="4">
-                Lehrjahr 2
-              </th>
-
-              <th colspan="4">
-                Lehrjahr 3
-              </th>
-            </tr>
-
-            <tr>
-              <th colspan="2">Semester 1</th>
-              <th colspan="2">Semester 2</th>
-              <th colspan="2">Semester 3</th>
-              <th colspan="2">Semester 4</th>
-              <th colspan="2">Semester 5</th>
-              <th colspan="2">Semester 6</th>
-            </tr>
-
-            <tr>
-              <th
-                v-for="quarter in quarters"
-                :key="quarter"
+              <tbody>
+              <tr
+                v-for="module in selectedCourse.modules"
+                :key="module.id"
               >
-                Q{{ quarter }}
-              </th>
-            </tr>
-            </thead>
+                <th>
+                  <input v-model="module.name" type="text">
+                  <button
+                    type="button"
+                    class="danger-button"
+                    @click="removeModule(module.id)"
+                  >
+                    Entfernen
+                  </button>
+                </th>
 
-            <tbody>
-            <tr
-              v-for="module in selectedCourse.modules"
-              :key="module.id"
-            >
-              <th>
-                <input
-                  v-model="module.name"
-                  type="text"
-                >
-
-                <button
-                  type="button"
-                  @click="removeModule(module.id)"
-                >
-                  Entfernen
-                </button>
-              </th>
-
-              <template
-                v-for="quarter in quarters"
-                :key="quarter"
-              >
-                <td
-                  v-if="shouldRenderQuarter(module, quarter)"
-                  :colspan="
-                      getFieldAtStart(module, quarter)?.quarterSpan ?? 1
-                    "
-                >
-                  <div v-if="getFieldAtStart(module, quarter)">
-                    <template
-                      v-if="
-                          editingFieldId ===
-                          getFieldAtStart(module, quarter)!.id
-                        "
-                    >
-                      <input
-                        v-model.number="
-                            getFieldAtStart(module, quarter)!.lessons
-                          "
-                        type="number"
-                        min="0"
-                        placeholder="Lektionen"
+                <template v-for="quarter in quarters" :key="quarter">
+                  <td
+                    v-if="shouldRenderQuarter(module, quarter)"
+                    :colspan="getFieldAtStart(module, quarter)?.quarterSpan ?? 1"
+                  >
+                    <div v-if="getFieldAtStart(module, quarter)">
+                      <template
+                        v-if="editingFieldId === getFieldAtStart(module, quarter)!.id"
                       >
+                        <input
+                          v-model.number="getFieldAtStart(module, quarter)!.lessons"
+                          type="number"
+                          min="0"
+                          placeholder="Lektionen"
+                        >
+
+                        <button type="button" @click="finishEditingField">
+                          Speichern
+                        </button>
+
+                        <button
+                          type="button"
+                          class="danger-button"
+                          @click="removeField(module, getFieldAtStart(module, quarter)!.id)"
+                        >
+                          Löschen
+                        </button>
+                      </template>
 
                       <button
+                        v-else
                         type="button"
-                        @click="finishEditingField"
+                        class="lesson-button"
+                        @click="editField(getFieldAtStart(module, quarter)!.id)"
                       >
-                        Speichern
+                        {{
+                          getFieldAtStart(module, quarter)!.lessons !== null
+                            ? getFieldAtStart(module, quarter)!.lessons + ' Lektionen'
+                            : 'Lektionen eintragen'
+                        }}
                       </button>
-
-                      <button
-                        type="button"
-                        @click="
-                            removeField(
-                              module,
-                              getFieldAtStart(module, quarter)!.id
-                            )
-                          "
-                      >
-                        Löschen
-                      </button>
-                    </template>
+                    </div>
 
                     <button
                       v-else
                       type="button"
-                      @click="
-                          editField(
-                            getFieldAtStart(module, quarter)!.id
-                          )
-                        "
+                      class="quarter-button"
+                      :class="{ selected: isSelectionStart(module.id, quarter) }"
+                      @click="handleQuarterClick(module, quarter)"
                     >
-                      {{
-                        getFieldAtStart(module, quarter)!.lessons !== null
-                          ? getFieldAtStart(module, quarter)!.lessons +
-                          ' Lektionen'
-                          : 'Lektionen eintragen'
-                      }}
+                      {{ isSelectionStart(module.id, quarter) ? '●' : '+' }}
                     </button>
-                  </div>
-
-                  <button
-                    v-else
-                    type="button"
-                    @click="handleQuarterClick(module, quarter)"
-                  >
-                    {{
-                      isSelectionStart(module.id, quarter)
-                        ? '●'
-                        : '+'
-                    }}
-                  </button>
-                </td>
-              </template>
-            </tr>
-            </tbody>
-          </table>
+                  </td>
+                </template>
+              </tr>
+              </tbody>
+            </table>
+          </div>
 
           <p v-if="selectedCourse.modules.length === 0">
             Noch keine Module vorhanden.
           </p>
 
-          <div v-if="selection">
+          <div v-if="selection" class="selection-notice">
             <p>
               Startquartal Q{{ selection.startQuarter }} ausgewählt.
               Wähle ein zweites freies Quartal im gleichen Modul.
             </p>
-
-            <button
-              type="button"
-              @click="cancelSelection"
-            >
+            <button type="button" @click="cancelSelection">
               Auswahl abbrechen
             </button>
           </div>
 
-          <p v-if="fieldError">
-            {{ fieldError }}
-          </p>
+          <p v-if="fieldError" class="error-message">{{ fieldError }}</p>
 
           <form @submit.prevent="addModule">
             <input
@@ -260,31 +198,29 @@
               type="text"
               placeholder="Modulname"
             >
-
-            <button type="submit">
-              Modul hinzufügen
-            </button>
+            <button type="submit">Modul hinzufügen</button>
           </form>
 
-          <p v-if="moduleError">
-            {{ moduleError }}
-          </p>
+          <p v-if="moduleError" class="error-message">{{ moduleError }}</p>
 
           <hr>
 
-          <button
-            type="button"
-            @click="deleteCourse"
-          >
+          <button type="button" class="danger-button" @click="deleteCourse">
             Lehrgang löschen
           </button>
         </div>
 
-        <p v-else>
-          Kein Lehrgang ausgewählt.
-        </p>
+        <p v-else>Kein Lehrgang ausgewählt.</p>
       </section>
     </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <span>Klasse: D24a</span>
+        <strong>Lehrway</strong>
+        <span>Khalil, Luka, Noél und Kenan</span>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -315,32 +251,16 @@ interface QuarterSelection {
   startQuarter: number
 }
 
-const quarters = [
-  1, 2, 3, 4,
-  5, 6, 7, 8,
-  9, 10, 11, 12
-]
+const quarters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 const courses = ref<Course[]>([
   {
     id: 1,
     name: 'IMS',
     modules: [
-      {
-        id: 101,
-        name: 'M117',
-        fields: []
-      },
-      {
-        id: 102,
-        name: 'M122',
-        fields: []
-      },
-      {
-        id: 103,
-        name: 'M164',
-        fields: []
-      }
+      { id: 101, name: 'M117', fields: [] },
+      { id: 102, name: 'M122', fields: [] },
+      { id: 103, name: 'M164', fields: [] }
     ]
   },
   {
@@ -357,71 +277,54 @@ const courses = ref<Course[]>([
 
 const searchQuery = ref('')
 const selectedCourseId = ref<number | null>(null)
-
 const showCreateCourse = ref(false)
 const newCourseName = ref('')
 const createCourseError = ref('')
-
 const editedCourseName = ref('')
 const editCourseError = ref('')
-
 const newModuleName = ref('')
 const moduleError = ref('')
 const fieldError = ref('')
-
 const selection = ref<QuarterSelection | null>(null)
 const editingFieldId = ref<number | null>(null)
 
 const filteredCourses = computed(() =>
   courses.value.filter(course =>
-    course.name
-      .toLowerCase()
-      .includes(searchQuery.value.toLowerCase())
+    course.name.toLowerCase().includes(searchQuery.value.toLowerCase())
   )
 )
 
 const selectedCourse = computed(() =>
-  courses.value.find(
-    course => course.id === selectedCourseId.value
-  )
+  courses.value.find(course => course.id === selectedCourseId.value)
 )
 
 function selectCourse(courseId: number) {
   selectedCourseId.value = courseId
-
   selection.value = null
   editingFieldId.value = null
   editCourseError.value = ''
   moduleError.value = ''
   fieldError.value = ''
 
-  const course = courses.value.find(
-    course => course.id === courseId
-  )
-
+  const course = courses.value.find(course => course.id === courseId)
   editedCourseName.value = course?.name ?? ''
 }
 
 function createCourse() {
   const name = newCourseName.value.trim()
-
   createCourseError.value = ''
 
   if (!name) {
-    createCourseError.value =
-      'Der Lehrgangsname darf nicht leer sein.'
+    createCourseError.value = 'Der Lehrgangsname darf nicht leer sein.'
     return
   }
 
   const courseAlreadyExists = courses.value.some(
-    course =>
-      course.name.trim().toLowerCase() ===
-      name.toLowerCase()
+    course => course.name.trim().toLowerCase() === name.toLowerCase()
   )
 
   if (courseAlreadyExists) {
-    createCourseError.value =
-      'Ein Lehrgang mit diesem Namen existiert bereits.'
+    createCourseError.value = 'Ein Lehrgang mit diesem Namen existiert bereits.'
     return
   }
 
@@ -446,25 +349,21 @@ function renameCourse() {
   if (!selectedCourse.value) return
 
   const name = editedCourseName.value.trim()
-
   editCourseError.value = ''
 
   if (!name) {
-    editCourseError.value =
-      'Der Lehrgangsname darf nicht leer sein.'
+    editCourseError.value = 'Der Lehrgangsname darf nicht leer sein.'
     return
   }
 
   const courseAlreadyExists = courses.value.some(
     course =>
       course.id !== selectedCourse.value?.id &&
-      course.name.trim().toLowerCase() ===
-      name.toLowerCase()
+      course.name.trim().toLowerCase() === name.toLowerCase()
   )
 
   if (courseAlreadyExists) {
-    editCourseError.value =
-      'Ein Lehrgang mit diesem Namen existiert bereits.'
+    editCourseError.value = 'Ein Lehrgang mit diesem Namen existiert bereits.'
     return
   }
 
@@ -495,25 +394,19 @@ function addModule() {
   if (!selectedCourse.value) return
 
   const name = newModuleName.value.trim()
-
   moduleError.value = ''
 
   if (!name) {
-    moduleError.value =
-      'Der Modulname darf nicht leer sein.'
+    moduleError.value = 'Der Modulname darf nicht leer sein.'
     return
   }
 
-  const moduleAlreadyExists =
-    selectedCourse.value.modules.some(
-      module =>
-        module.name.trim().toLowerCase() ===
-        name.toLowerCase()
-    )
+  const moduleAlreadyExists = selectedCourse.value.modules.some(
+    module => module.name.trim().toLowerCase() === name.toLowerCase()
+  )
 
   if (moduleAlreadyExists) {
-    moduleError.value =
-      'Ein Modul mit diesem Namen existiert bereits.'
+    moduleError.value = 'Ein Modul mit diesem Namen existiert bereits.'
     return
   }
 
@@ -529,25 +422,20 @@ function addModule() {
 function removeModule(moduleId: number) {
   if (!selectedCourse.value) return
 
-  selectedCourse.value.modules =
-    selectedCourse.value.modules.filter(
-      module => module.id !== moduleId
-    )
+  selectedCourse.value.modules = selectedCourse.value.modules.filter(
+    module => module.id !== moduleId
+  )
 
   if (selection.value?.moduleId === moduleId) {
     selection.value = null
   }
 }
 
-function handleQuarterClick(
-  module: CourseModule,
-  quarter: number
-) {
+function handleQuarterClick(module: CourseModule, quarter: number) {
   fieldError.value = ''
 
   if (isQuarterOccupied(module, quarter)) {
-    fieldError.value =
-      'Dieses Quartal ist bereits belegt.'
+    fieldError.value = 'Dieses Quartal ist bereits belegt.'
     return
   }
 
@@ -556,7 +444,6 @@ function handleQuarterClick(
       moduleId: module.id,
       startQuarter: quarter
     }
-
     return
   }
 
@@ -565,38 +452,19 @@ function handleQuarterClick(
       moduleId: module.id,
       startQuarter: quarter
     }
-
     return
   }
 
-  const startQuarter = Math.min(
-    selection.value.startQuarter,
-    quarter
-  )
+  const startQuarter = Math.min(selection.value.startQuarter, quarter)
+  const endQuarter = Math.max(selection.value.startQuarter, quarter)
 
-  const endQuarter = Math.max(
-    selection.value.startQuarter,
-    quarter
-  )
-
-  if (
-    !isRangeAvailable(
-      module,
-      startQuarter,
-      endQuarter
-    )
-  ) {
+  if (!isRangeAvailable(module, startQuarter, endQuarter)) {
     fieldError.value =
       'Zwischen diesen Quartalen befindet sich bereits ein anderes Feld.'
     return
   }
 
-  createField(
-    module,
-    startQuarter,
-    endQuarter
-  )
-
+  createField(module, startQuarter, endQuarter)
   selection.value = null
 }
 
@@ -608,13 +476,11 @@ function createField(
   const newField: CourseField = {
     id: Date.now(),
     startQuarter,
-    quarterSpan:
-      endQuarter - startQuarter + 1,
+    quarterSpan: endQuarter - startQuarter + 1,
     lessons: null
   }
 
   module.fields.push(newField)
-
   editingFieldId.value = newField.id
 }
 
@@ -626,10 +492,7 @@ function finishEditingField() {
   editingFieldId.value = null
 }
 
-function removeField(
-  module: CourseModule,
-  fieldId: number
-) {
+function removeField(module: CourseModule, fieldId: number) {
   module.fields = module.fields.filter(
     field => field.id !== fieldId
   )
@@ -646,25 +509,15 @@ function cancelSelection() {
   fieldError.value = ''
 }
 
-function getFieldAtStart(
-  module: CourseModule,
-  quarter: number
-) {
+function getFieldAtStart(module: CourseModule, quarter: number) {
   return module.fields.find(
-    field =>
-      field.startQuarter === quarter
+    field => field.startQuarter === quarter
   )
 }
 
-function getFieldAtQuarter(
-  module: CourseModule,
-  quarter: number
-) {
+function getFieldAtQuarter(module: CourseModule, quarter: number) {
   return module.fields.find(field => {
-    const endQuarter =
-      field.startQuarter +
-      field.quarterSpan -
-      1
+    const endQuarter = field.startQuarter + field.quarterSpan - 1
 
     return (
       quarter >= field.startQuarter &&
@@ -673,16 +526,8 @@ function getFieldAtQuarter(
   })
 }
 
-function isQuarterOccupied(
-  module: CourseModule,
-  quarter: number
-) {
-  return (
-    getFieldAtQuarter(
-      module,
-      quarter
-    ) !== undefined
-  )
+function isQuarterOccupied(module: CourseModule, quarter: number) {
+  return getFieldAtQuarter(module, quarter) !== undefined
 }
 
 function isRangeAvailable(
@@ -703,29 +548,279 @@ function isRangeAvailable(
   return true
 }
 
-function shouldRenderQuarter(
-  module: CourseModule,
-  quarter: number
-) {
-  const field = getFieldAtQuarter(
-    module,
-    quarter
-  )
+function shouldRenderQuarter(module: CourseModule, quarter: number) {
+  const field = getFieldAtQuarter(module, quarter)
 
-  if (!field) {
-    return true
-  }
+  if (!field) return true
 
   return field.startQuarter === quarter
 }
 
-function isSelectionStart(
-  moduleId: number,
-  quarter: number
-) {
+function isSelectionStart(moduleId: number, quarter: number) {
   return (
     selection.value?.moduleId === moduleId &&
     selection.value?.startQuarter === quarter
   )
 }
 </script>
+
+<style scoped>
+.page-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f6f8fc;
+  color: #172033;
+  font-family: Inter, system-ui, Arial, sans-serif;
+}
+
+.site-header {
+  background: white;
+  border-bottom: 1px solid #e6eaf0;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+.header-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  color: #172033;
+  text-decoration: none;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.brand span { color: #2563eb; }
+
+.site-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  padding: 11px 18px;
+  border-radius: 10px;
+  color: #475569;
+  text-decoration: none;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.nav-link:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.nav-link.router-link-active {
+  background: #2563eb;
+  color: white;
+}
+
+.page-intro {
+  max-width: 1440px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 36px 32px 18px;
+}
+
+.page-intro h1 {
+  font-size: 36px;
+  font-weight: 800;
+  margin: 0 0 8px;
+  letter-spacing: -1px;
+}
+
+.page-intro p {
+  color: #64748b;
+  font-size: 16px;
+  margin: 0;
+}
+
+.page-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1440px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 16px 32px 48px;
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.page-main > aside,
+.page-main > section {
+  min-width: 0;
+  padding: 24px;
+  background: white;
+  border: 1px solid #e6eaf0;
+  border-radius: 16px;
+  box-shadow: 0 5px 22px rgba(15, 23, 42, 0.035);
+}
+
+.page-main h2 {
+  margin-top: 0;
+  font-size: 20px;
+}
+
+.page-main h3 {
+  margin-top: 24px;
+}
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 20px 0;
+}
+
+table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th, td {
+  border: 1px solid #e2e8f0;
+  padding: 10px 6px;
+  text-align: center;
+}
+
+thead th {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+tbody th {
+  background: #f8fafc;
+  min-width: 150px;
+}
+
+tbody th input {
+  max-width: 130px;
+}
+
+button {
+  cursor: pointer;
+}
+
+.quarter-button {
+  width: 100%;
+  min-width: 32px;
+  padding: 8px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #2563eb;
+}
+
+.quarter-button:hover {
+  background: #dbeafe;
+}
+
+.quarter-button.selected {
+  background: #2563eb;
+  color: white;
+}
+
+.lesson-button {
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 8px;
+  font-weight: 600;
+}
+
+.selection-notice {
+  padding: 12px 16px;
+  background: #eff6ff;
+  border-radius: 10px;
+  color: #1d4ed8;
+  margin: 16px 0;
+}
+
+.error-message {
+  color: #dc2626;
+}
+
+.danger-button {
+  color: #b91c1c;
+}
+
+.site-footer {
+  background: #101114;
+  color: white;
+  padding: 24px 32px;
+}
+
+.footer-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: 18px;
+  font-size: 14px;
+}
+
+.footer-inner strong {
+  text-align: center;
+  font-size: 20px;
+}
+
+.footer-inner span:last-child {
+  text-align: right;
+}
+
+@media (max-width: 1100px) {
+  .page-main {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .header-inner {
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .site-nav {
+    justify-content: center;
+  }
+
+  .page-intro {
+    padding: 28px 18px 16px;
+  }
+
+  .page-intro h1 {
+    font-size: 28px;
+  }
+
+  .page-main {
+    grid-template-columns: 1fr;
+    padding: 16px 18px 32px;
+  }
+
+  .footer-inner {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .footer-inner span:last-child {
+    text-align: center;
+  }
+}
+</style>
