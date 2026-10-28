@@ -95,7 +95,7 @@ const handleLogin = async () => {
       <div class="footer-inner">
         <span>Klasse: D24a</span>
         <strong>Lehrway</strong>
-        <span>Khalil, Luka, Noél und Kenan</span>
+        <span>Khalil, Luka, Noël und Kenan</span>
       </div>
     </footer>
 
