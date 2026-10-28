@@ -179,8 +179,6 @@ async function createClass() {
   const name = newClassName.value.trim()
   classError.value = ''
 
-  // Klasse muss noch aktualisiert werden, fehler besteht wenn man klasse erstellen muss.
-
 
   if (!name) {
     classError.value = 'Bitte einen Klassennamen eingeben.'
