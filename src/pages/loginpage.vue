@@ -1,7 +1,7 @@
-
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import { useRouter } from 'vue-router'
 import { ref } from 'vue'
+import Footer from '@/components/Footer.vue'
 
 const router = useRouter()
 const email = ref('')
@@ -9,7 +9,6 @@ const password = ref('')
 
 const handleLogin = async () => {
   try {
-
     const response = await fetch('http://localhost:3000/api/login', {
       method: 'POST',
       headers: {
@@ -17,40 +16,34 @@ const handleLogin = async () => {
       },
       body: JSON.stringify({
         email: email.value,
-        password: password.value
+        password: password.value,
       }),
-    });
+    })
 
-    const data = await response.json();
-    console.log("Antwort vom Backend:", data);
+    const data = await response.json()
+    console.log('Antwort vom Backend:', data)
 
     if (response.ok && data.success) {
-      console.log("Login erfolgreich! Weiterleitung...");
-      router.push('/home');
+      console.log('Login erfolgreich! Weiterleitung...')
+      router.push('/home')
     } else {
-      alert(data.message || "Login fehlgeschlagen!");
+      alert(data.message || 'Login fehlgeschlagen!')
     }
-
   } catch (error) {
-    console.error("Verbindungsfehler zum Backend:", error);
-    alert("Server ist nicht erreichbar!");
+    console.error('Verbindungsfehler zum Backend:', error)
+    alert('Server ist nicht erreichbar!')
   }
 }
 </script>
 
 <template>
   <div class="page-shell">
-
-    <!-- HEADER OHNE NAVBAR -->
     <header class="site-header">
       <div class="header-inner">
-        <h1 class="brand">
-          Lehr<span>way</span>
-        </h1>
+        <h1 class="brand">Lehr<span>way</span></h1>
       </div>
     </header>
 
-    <!-- LOGIN -->
     <main class="page-main">
       <div class="auth-card">
         <h2>Login</h2>
@@ -58,52 +51,29 @@ const handleLogin = async () => {
         <form @submit.prevent="handleLogin">
           <div class="form-group">
             <label>E-Mail:</label>
-            <input
-              type="email"
-              v-model="email"
-              placeholder="x@x.ch"
-              required
-            />
+            <input type="email" v-model="email" placeholder="x@x.ch" required />
           </div>
 
           <div class="form-group">
             <label>Passwort:</label>
-            <input
-              type="password"
-              v-model="password"
-              placeholder="x"
-              required
-            />
+            <input type="password" v-model="password" placeholder="x" required />
           </div>
 
-          <button type="submit">
-            Einloggen
-          </button>
+          <button type="submit">Einloggen</button>
         </form>
 
         <p class="auth-link">
           Noch kein Konto?
-          <RouterLink to="/register">
-            Hier registrieren
-          </RouterLink>
+          <RouterLink to="/register"> Hier registrieren </RouterLink>
         </p>
       </div>
     </main>
 
-    <!-- FOOTER -->
-    <footer class="site-footer">
-      <div class="footer-inner">
-        <span>Klasse: D24a</span>
-        <strong>Lehrway</strong>
-        <span>Khalil, Luka, Noël und Kenan</span>
-      </div>
-    </footer>
-
+    <Footer />
   </div>
 </template>
 
 <style scoped>
-/* GRUNDLAYOUT */
 .page-shell {
   min-height: 100vh;
   display: flex;
@@ -113,7 +83,6 @@ const handleLogin = async () => {
   font-family: Inter, system-ui, Arial, sans-serif;
 }
 
-/* HEADER */
 .site-header {
   background: white;
   border-bottom: 1px solid #e6eaf0;
@@ -126,7 +95,6 @@ const handleLogin = async () => {
   padding: 18px 32px;
 }
 
-/* LEHRWAY LOGO */
 .brand {
   margin: 0;
   color: #172033;
@@ -139,7 +107,6 @@ const handleLogin = async () => {
   color: #2563eb;
 }
 
-/* HAUPTBEREICH */
 .page-main {
   flex: 1;
   display: flex;
@@ -148,7 +115,6 @@ const handleLogin = async () => {
   padding: 40px 20px;
 }
 
-/* LOGIN KARTE */
 .auth-card {
   width: 100%;
   max-width: 420px;
@@ -166,7 +132,6 @@ const handleLogin = async () => {
   font-weight: 800;
 }
 
-/* FORMULAR */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -199,7 +164,6 @@ const handleLogin = async () => {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-/* LOGIN BUTTON */
 .auth-card form button {
   width: 100%;
   padding: 14px;
@@ -217,7 +181,6 @@ const handleLogin = async () => {
   background: #1d4ed8;
 }
 
-/* REGISTRIERUNGS-LINK */
 .auth-link {
   margin: 26px 0 0;
   padding-top: 20px;
@@ -237,33 +200,6 @@ const handleLogin = async () => {
   text-decoration: underline;
 }
 
-/* FOOTER */
-.site-footer {
-  background: #101114;
-  color: white;
-  padding: 24px 32px;
-}
-
-.footer-inner {
-  max-width: 1440px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items: center;
-  gap: 18px;
-  font-size: 14px;
-}
-
-.footer-inner strong {
-  text-align: center;
-  font-size: 20px;
-}
-
-.footer-inner span:last-child {
-  text-align: right;
-}
-
-/* RESPONSIVE DESIGN */
 @media (max-width: 700px) {
   .header-inner {
     padding: 18px;
@@ -276,15 +212,6 @@ const handleLogin = async () => {
 
   .auth-card {
     padding: 26px 20px;
-  }
-
-  .footer-inner {
-    grid-template-columns: 1fr;
-    text-align: center;
-  }
-
-  .footer-inner span:last-child {
-    text-align: center;
   }
 }
 </style>

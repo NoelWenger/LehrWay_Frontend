@@ -1,7 +1,7 @@
-
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { ref } from "vue";
+import Footer from '@/components/Footer.vue'
 
 const router = useRouter()
 const email = ref('')
@@ -31,7 +31,7 @@ const handleRegister = async () => {
 
     if (response.ok && data.success) {
       alert("Registrierung erfolgreich! Bitte logge dich ein.")
-      router.push('/') // Leitet zur Login-Seite weiter
+      router.push('/')
     } else {
       alert(data.message || "Registrierung fehlgeschlagen!")
     }
@@ -45,7 +45,6 @@ const handleRegister = async () => {
 <template>
   <div class="page-shell">
 
-    <!-- HEADER OHNE NAVBAR -->
     <header class="site-header">
       <div class="header-inner">
         <h1 class="brand">
@@ -54,7 +53,6 @@ const handleRegister = async () => {
       </div>
     </header>
 
-    <!-- REGISTRIERUNG -->
     <main class="page-main">
       <div class="auth-card">
         <h2>Registrierung</h2>
@@ -104,20 +102,12 @@ const handleRegister = async () => {
       </div>
     </main>
 
-    <!-- FOOTER -->
-    <footer class="site-footer">
-      <div class="footer-inner">
-        <span>Klasse: D24a</span>
-        <strong>Lehrway</strong>
-        <span>Khalil, Luka, Noél und Kenan</span>
-      </div>
-    </footer>
+    <Footer />
 
   </div>
 </template>
 
 <style scoped>
-/* GRUNDLAYOUT */
 .page-shell {
   min-height: 100vh;
   display: flex;
@@ -127,7 +117,6 @@ const handleRegister = async () => {
   font-family: Inter, system-ui, Arial, sans-serif;
 }
 
-/* HEADER */
 .site-header {
   background: white;
   border-bottom: 1px solid #e6eaf0;
@@ -140,7 +129,6 @@ const handleRegister = async () => {
   padding: 18px 32px;
 }
 
-/* LEHRWAY LOGO */
 .brand {
   margin: 0;
   color: #172033;
@@ -153,7 +141,6 @@ const handleRegister = async () => {
   color: #2563eb;
 }
 
-/* HAUPTBEREICH */
 .page-main {
   flex: 1;
   display: flex;
@@ -162,7 +149,6 @@ const handleRegister = async () => {
   padding: 40px 20px;
 }
 
-/* REGISTRIERUNGSKARTE */
 .auth-card {
   width: 100%;
   max-width: 420px;
@@ -180,7 +166,6 @@ const handleRegister = async () => {
   font-weight: 800;
 }
 
-/* FORMULAR */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -213,7 +198,6 @@ const handleRegister = async () => {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-/* REGISTRIERUNGS-BUTTON */
 .auth-card form button {
   width: 100%;
   padding: 14px;
@@ -231,7 +215,6 @@ const handleRegister = async () => {
   background: #1d4ed8;
 }
 
-/* LOGIN-LINK */
 .auth-link {
   margin: 26px 0 0;
   padding-top: 20px;
@@ -251,33 +234,6 @@ const handleRegister = async () => {
   text-decoration: underline;
 }
 
-/* FOOTER */
-.site-footer {
-  background: #101114;
-  color: white;
-  padding: 24px 32px;
-}
-
-.footer-inner {
-  max-width: 1440px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items: center;
-  gap: 18px;
-  font-size: 14px;
-}
-
-.footer-inner strong {
-  text-align: center;
-  font-size: 20px;
-}
-
-.footer-inner span:last-child {
-  text-align: right;
-}
-
-/* RESPONSIVE DESIGN */
 @media (max-width: 700px) {
   .header-inner {
     padding: 18px;
@@ -290,15 +246,6 @@ const handleRegister = async () => {
 
   .auth-card {
     padding: 26px 20px;
-  }
-
-  .footer-inner {
-    grid-template-columns: 1fr;
-    text-align: center;
-  }
-
-  .footer-inner span:last-child {
-    text-align: center;
   }
 }
 </style>
