@@ -28,7 +28,7 @@ async function logout() {
   localStorage.removeItem('user')
   username.value = ''
 
-  await router.replace('/login')
+  await router.replace('/')
 }
 </script>
 
