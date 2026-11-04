@@ -58,6 +58,21 @@ interface DropTarget {
   valid: boolean
 }
 
+interface SavedRange {
+  id: number
+  startQuarter: number
+  endQuarter: number
+  quarterSpan: number
+  lessons: number
+}
+
+interface SavedPosition {
+  id: number
+  startQuarter: number
+  endQuarter: number
+  quarterSpan: number
+}
+
 const quarters = Array.from({ length: 12 }, (_, i) => i + 1)
 
 const courses = ref<Course[]>([])
@@ -71,8 +86,8 @@ const showCreateCourse = ref(false)
 const newCourseName = ref('')
 const newCourseSemesters = ref(6)
 const editedCourseName = ref('')
-const newModuleName = ref('')
 
+const newModuleName = ref('')
 const showModuleForm = ref(false)
 const moduleNameInput = ref<HTMLInputElement | null>(null)
 
@@ -82,8 +97,12 @@ const moduleError = ref('')
 const fieldError = ref('')
 
 const selection = ref<QuarterSelection | null>(null)
+
 const editingFieldId = ref<number | null>(null)
 const editedLessons = ref(0)
+const showRangeEditor = ref(false)
+const editedStartQuarter = ref(1)
+const editedEndQuarter = ref(1)
 
 const draggedField = ref<DraggedField | null>(null)
 const dropTarget = ref<DropTarget | null>(null)
@@ -104,6 +123,67 @@ const selectedCourse = computed(() =>
   ),
 )
 
+const editingContext = computed(() => {
+  if (
+    editingFieldId.value === null ||
+    !selectedCourse.value
+  ) {
+    return null
+  }
+
+  for (const module of selectedCourse.value.modules) {
+    const field = module.fields.find(
+      entry => entry.id === editingFieldId.value,
+    )
+
+    if (field) {
+      return { module, field }
+    }
+  }
+
+  return null
+})
+
+const startQuarterOptions = computed(() => {
+  const context = editingContext.value
+  if (!context) return []
+
+  return quarters.map(quarter => ({
+    quarter,
+    available: isRangeAvailable(
+      context.module,
+      quarter,
+      editedEndQuarter.value,
+      context.field.id,
+    ),
+  }))
+})
+
+const endQuarterOptions = computed(() => {
+  const context = editingContext.value
+  if (!context) return []
+
+  return quarters.map(quarter => ({
+    quarter,
+    available: isRangeAvailable(
+      context.module,
+      editedStartQuarter.value,
+      quarter,
+      context.field.id,
+    ),
+  }))
+})
+
+const editedRangeText = computed(() => {
+  const start = editedStartQuarter.value
+  const end = editedEndQuarter.value
+  const count = end - start + 1
+
+  return count === 1
+    ? `Q${start} · 1 Quartal`
+    : `Q${start} bis Q${end} · ${count} Quartale`
+})
+
 function getError(error: unknown) {
   return error instanceof Error
     ? error.message
@@ -111,15 +191,26 @@ function getError(error: unknown) {
 }
 
 function getGlobalQuarter(module: DBModul) {
-  return (Number(module.lehrjahr) - 1) * 4 + Number(module.quartal)
+  return (Number(module.lehrjahr) - 1) * 4 +
+    Number(module.quartal)
 }
 
 function toDBQuarter(quarter: number) {
   const lehrjahr = Math.floor((quarter - 1) / 4) + 1
   const quartal = ((quarter - 1) % 4) + 1
-  const semester = (lehrjahr - 1) * 2 + Math.ceil(quartal / 2)
+  const semester =
+    (lehrjahr - 1) * 2 + Math.ceil(quartal / 2)
 
   return { lehrjahr, semester, quartal }
+}
+
+function getFieldRangeText(field: CourseField) {
+  const start = field.startQuarter
+  const end = start + field.quarterSpan - 1
+
+  return field.quarterSpan === 1
+    ? `Q${start}`
+    : `Q${start}–Q${end}`
 }
 
 // --------------------------------------------------
@@ -131,7 +222,8 @@ async function loadCourses() {
   apiError.value = ''
 
   try {
-    const dbCourses = await request<DBLehrgang[]>('/lehrgaenge')
+    const dbCourses =
+      await request<DBLehrgang[]>('/lehrgaenge')
 
     const loadedCourses = await Promise.all(
       dbCourses.map(async course => {
@@ -183,8 +275,12 @@ async function loadCourses() {
       selectedCourseId.value = null
       showModuleForm.value = false
       newModuleName.value = ''
+      selection.value = null
+      cancelEditingField()
+      clearDrag()
     }
   } catch (error) {
+    // Bereits geladene Daten bleiben bei einem Ladefehler sichtbar.
     apiError.value = getError(error)
   } finally {
     loading.value = false
@@ -196,13 +292,17 @@ function selectCourse(id: number) {
 
   selectedCourseId.value = id
   editedCourseName.value = selectedCourse.value?.name ?? ''
+
   selection.value = null
-  editingFieldId.value = null
+  cancelEditingField()
+
   editCourseError.value = ''
   moduleError.value = ''
   fieldError.value = ''
+
   showModuleForm.value = false
   newModuleName.value = ''
+
   clearDrag()
 }
 
@@ -216,17 +316,20 @@ async function createCourse() {
   const name = newCourseName.value.trim()
   createCourseError.value = ''
 
-  if (!name) {
-    createCourseError.value = 'Bitte einen Lehrgangsnamen eingeben.'
+  if (!name || Array.from(name).length > 255) {
+    createCourseError.value =
+      'Bitte einen Lehrgangsnamen mit 1 bis 255 Zeichen eingeben.'
     return
   }
 
   if (
     courses.value.some(
-      course => course.name.toLowerCase() === name.toLowerCase(),
+      course =>
+        course.name.trim().toLowerCase() === name.toLowerCase(),
     )
   ) {
-    createCourseError.value = 'Dieser Lehrgang existiert bereits.'
+    createCourseError.value =
+      'Dieser Lehrgang existiert bereits.'
     return
   }
 
@@ -265,8 +368,9 @@ async function renameCourse() {
   const name = editedCourseName.value.trim()
   editCourseError.value = ''
 
-  if (!name) {
-    editCourseError.value = 'Der Lehrgangsname darf nicht leer sein.'
+  if (!name || Array.from(name).length > 255) {
+    editCourseError.value =
+      'Bitte einen Lehrgangsnamen mit 1 bis 255 Zeichen eingeben.'
     return
   }
 
@@ -274,10 +378,11 @@ async function renameCourse() {
     courses.value.some(
       other =>
         other.id !== course.id &&
-        other.name.toLowerCase() === name.toLowerCase(),
+        other.name.trim().toLowerCase() === name.toLowerCase(),
     )
   ) {
-    editCourseError.value = 'Dieser Lehrgang existiert bereits.'
+    editCourseError.value =
+      'Dieser Lehrgang existiert bereits.'
     return
   }
 
@@ -289,8 +394,10 @@ async function renameCourse() {
       json('PUT', { bezeichnung: name }),
     )
 
-    await loadCourses()
+    course.name = name
     editedCourseName.value = name
+
+    await loadCourses()
   } catch (error) {
     editCourseError.value = getError(error)
   } finally {
@@ -309,16 +416,24 @@ async function deleteCourse() {
   saving.value = true
 
   try {
-    await request(`/lehrgaenge/${course.id}`, json('DELETE'))
+    await request(
+      `/lehrgaenge/${course.id}`,
+      json('DELETE'),
+    )
+
+    courses.value = courses.value.filter(
+      entry => entry.id !== course.id,
+    )
 
     selectedCourseId.value = null
     selection.value = null
-    editingFieldId.value = null
+    cancelEditingField()
+
     editedCourseName.value = ''
     showModuleForm.value = false
     newModuleName.value = ''
-    clearDrag()
 
+    clearDrag()
     await loadCourses()
   } catch (error) {
     apiError.value = getError(error)
@@ -339,7 +454,10 @@ async function openModuleForm() {
 
   await nextTick()
 
-  moduleNameInput.value?.focus({ preventScroll: true })
+  moduleNameInput.value?.focus({
+    preventScroll: true,
+  })
+
   moduleNameInput.value?.scrollIntoView({
     behavior: 'smooth',
     block: 'nearest',
@@ -367,13 +485,15 @@ async function addModule() {
   moduleError.value = ''
 
   if (!name || Array.from(name).length > 50) {
-    moduleError.value = 'Bitte einen Modulnamen mit 1 bis 50 Zeichen eingeben.'
+    moduleError.value =
+      'Bitte einen Modulnamen mit 1 bis 50 Zeichen eingeben.'
     return
   }
 
   if (
     course.modules.some(
-      module => module.name.trim().toLowerCase() === name.toLowerCase(),
+      module =>
+        module.name.trim().toLowerCase() === name.toLowerCase(),
     )
   ) {
     moduleError.value = 'Dieses Modul existiert bereits.'
@@ -395,6 +515,7 @@ async function addModule() {
 
     newModuleName.value = ''
     showModuleForm.value = false
+
     await loadCourses()
   } catch (error) {
     moduleError.value = getError(error)
@@ -414,16 +535,33 @@ async function removeModule(module: CourseModule) {
   moduleError.value = ''
 
   try {
-    for (const field of module.fields) {
-      await request(`/lehrgang-module/${field.id}`, json('DELETE'))
+    // Die vorhandene Datenstruktur speichert jedes
+    // Quartalsfeld als eigenen Datensatz.
+    for (const field of [...module.fields]) {
+      await request(
+        `/lehrgang-module/${field.id}`,
+        json('DELETE'),
+      )
+
+      module.fields = module.fields.filter(
+        entry => entry.id !== field.id,
+      )
+
+      if (editingFieldId.value === field.id) {
+        cancelEditingField()
+      }
     }
 
     if (selection.value?.moduleId === module.id) {
       selection.value = null
     }
 
-    if (module.fields.some(field => field.id === editingFieldId.value)) {
-      editingFieldId.value = null
+    const course = selectedCourse.value
+
+    if (course) {
+      course.modules = course.modules.filter(
+        entry => entry.id !== module.id,
+      )
     }
 
     await loadCourses()
@@ -436,12 +574,23 @@ async function removeModule(module: CourseModule) {
 }
 
 // --------------------------------------------------
-// Quartalsfelder
+// Quartalsfelder anlegen
 // --------------------------------------------------
 
-async function handleQuarterClick(module: CourseModule, quarter: number) {
+async function handleQuarterClick(
+  module: CourseModule,
+  quarter: number,
+) {
   const course = selectedCourse.value
-  if (!course || busy.value || draggedField.value) return
+
+  if (
+    !course ||
+    busy.value ||
+    draggedField.value ||
+    editingFieldId.value !== null
+  ) {
+    return
+  }
 
   fieldError.value = ''
 
@@ -450,16 +599,27 @@ async function handleQuarterClick(module: CourseModule, quarter: number) {
     return
   }
 
-  if (!selection.value || selection.value.moduleId !== module.id) {
+  if (
+    !selection.value ||
+    selection.value.moduleId !== module.id
+  ) {
     selection.value = {
       moduleId: module.id,
       startQuarter: quarter,
     }
+
     return
   }
 
-  const start = Math.min(selection.value.startQuarter, quarter)
-  const end = Math.max(selection.value.startQuarter, quarter)
+  const start = Math.min(
+    selection.value.startQuarter,
+    quarter,
+  )
+
+  const end = Math.max(
+    selection.value.startQuarter,
+    quarter,
+  )
 
   if (!isRangeAvailable(module, start, end)) {
     fieldError.value =
@@ -489,19 +649,69 @@ async function handleQuarterClick(module: CourseModule, quarter: number) {
   }
 }
 
+// --------------------------------------------------
+// Lektionen und Bereich bearbeiten
+// --------------------------------------------------
+
 function editField(field: CourseField) {
   if (busy.value || draggedField.value) return
 
   editingFieldId.value = field.id
   editedLessons.value = field.lessons
+
+  editedStartQuarter.value = field.startQuarter
+  editedEndQuarter.value =
+    field.startQuarter + field.quarterSpan - 1
+
+  showRangeEditor.value = false
+  selection.value = null
+  fieldError.value = ''
+}
+
+function cancelEditingField() {
+  editingFieldId.value = null
+  showRangeEditor.value = false
+  editedStartQuarter.value = 1
+  editedEndQuarter.value = 1
+  fieldError.value = ''
+}
+
+function openRangeEditor() {
+  if (busy.value || !editingContext.value) return
+
+  showRangeEditor.value = true
   fieldError.value = ''
 }
 
 async function finishEditingField() {
-  if (editingFieldId.value === null || busy.value) return
+  const context = editingContext.value
+  if (!context || busy.value) return
 
-  if (!Number.isInteger(editedLessons.value) || editedLessons.value < 0) {
-    fieldError.value = 'Bitte eine gültige Lektionszahl eingeben.'
+  if (
+    !Number.isInteger(editedLessons.value) ||
+    editedLessons.value < 0 ||
+    editedLessons.value > 2147483647
+  ) {
+    fieldError.value =
+      'Bitte eine gültige Lektionszahl eingeben.'
+    return
+  }
+
+  const start = editedStartQuarter.value
+  const end = editedEndQuarter.value
+
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    !isRangeAvailable(
+      context.module,
+      start,
+      end,
+      context.field.id,
+    )
+  ) {
+    fieldError.value =
+      'Bitte einen freien Bereich innerhalb von Q1 bis Q12 auswählen.'
     return
   }
 
@@ -509,12 +719,20 @@ async function finishEditingField() {
   fieldError.value = ''
 
   try {
-    await request(
-      `/lehrgang-module/${editingFieldId.value}`,
-      json('PUT', { lektionen: editedLessons.value }),
+    const result = await request<SavedRange>(
+      `/lehrgang-module/${context.field.id}/bereich`,
+      json('PATCH', {
+        startQuarter: start,
+        endQuarter: end,
+        lessons: editedLessons.value,
+      }),
     )
 
-    editingFieldId.value = null
+    context.field.startQuarter = Number(result.startQuarter)
+    context.field.quarterSpan = Number(result.quarterSpan)
+    context.field.lessons = Number(result.lessons)
+
+    cancelEditingField()
     await loadCourses()
   } catch (error) {
     fieldError.value = getError(error)
@@ -526,15 +744,34 @@ async function finishEditingField() {
 async function removeField(fieldId: number) {
   if (busy.value) return
 
-  if (!confirm('Möchtest du dieses Quartalsfeld löschen?')) return
+  if (!confirm('Möchtest du dieses Quartalsfeld löschen?')) {
+    return
+  }
 
   saving.value = true
   fieldError.value = ''
 
   try {
-    await request(`/lehrgang-module/${fieldId}`, json('DELETE'))
+    await request(
+      `/lehrgang-module/${fieldId}`,
+      json('DELETE'),
+    )
 
-    editingFieldId.value = null
+    const course = selectedCourse.value
+
+    if (course) {
+      for (const module of course.modules) {
+        module.fields = module.fields.filter(
+          field => field.id !== fieldId,
+        )
+      }
+
+      course.modules = course.modules.filter(
+        module => module.fields.length > 0,
+      )
+    }
+
+    cancelEditingField()
     await loadCourses()
   } catch (error) {
     fieldError.value = getError(error)
@@ -543,11 +780,19 @@ async function removeField(fieldId: number) {
   }
 }
 
-function getFieldAtStart(module: CourseModule, quarter: number) {
-  return module.fields.find(field => field.startQuarter === quarter)
+function getFieldAtStart(
+  module: CourseModule,
+  quarter: number,
+) {
+  return module.fields.find(
+    field => field.startQuarter === quarter,
+  )
 }
 
-function getFieldAtQuarter(module: CourseModule, quarter: number) {
+function getFieldAtQuarter(
+  module: CourseModule,
+  quarter: number,
+) {
   return module.fields.find(
     field =>
       quarter >= field.startQuarter &&
@@ -561,25 +806,41 @@ function isRangeAvailable(
   end: number,
   ignoredFieldId: number | null = null,
 ) {
-  if (start < 1 || end > quarters.length || end < start) return false
+  if (
+    start < 1 ||
+    end > quarters.length ||
+    end < start
+  ) {
+    return false
+  }
 
   return !module.fields.some(field => {
     if (field.id === ignoredFieldId) return false
 
-    const fieldEnd = field.startQuarter + field.quarterSpan - 1
+    const fieldEnd =
+      field.startQuarter + field.quarterSpan - 1
 
     return start <= fieldEnd && end >= field.startQuarter
   })
 }
 
-function shouldRenderQuarter(module: CourseModule, quarter: number) {
+function shouldRenderQuarter(
+  module: CourseModule,
+  quarter: number,
+) {
   const field = getFieldAtQuarter(module, quarter)
+
   return !field || field.startQuarter === quarter
 }
 
-function isSelectionStart(moduleId: number, quarter: number) {
-  return selection.value?.moduleId === moduleId &&
+function isSelectionStart(
+  moduleId: number,
+  quarter: number,
+) {
+  return (
+    selection.value?.moduleId === moduleId &&
     selection.value?.startQuarter === quarter
+  )
 }
 
 function cancelSelection() {
@@ -636,11 +897,11 @@ function findDraggedField(module: CourseModule) {
     return undefined
   }
 
-  return module.fields.find(field => field.id === dragged.fieldId)
+  return module.fields.find(
+    field => field.id === dragged.fieldId,
+  )
 }
 
-// Eine verbundene Zelle kann mehrere Quartale enthalten.
-// Die Mausposition innerhalb dieser Zelle bestimmt das Zielquartal.
 function quarterAtPointer(
   event: DragEvent,
   module: CourseModule,
@@ -648,21 +909,30 @@ function quarterAtPointer(
 ) {
   const cell = event.currentTarget as HTMLTableCellElement
   const rect = cell.getBoundingClientRect()
+
   const span =
     getFieldAtStart(module, cellStartQuarter)?.quarterSpan ?? 1
 
   if (rect.width <= 0) return cellStartQuarter
 
-  const relativePosition = (event.clientX - rect.left) / rect.width
+  const relativePosition =
+    (event.clientX - rect.left) / rect.width
+
   const offset = Math.max(
     0,
-    Math.min(span - 1, Math.floor(relativePosition * span)),
+    Math.min(
+      span - 1,
+      Math.floor(relativePosition * span),
+    ),
   )
 
   return cellStartQuarter + offset
 }
 
-function canDropAt(module: CourseModule, quarter: number) {
+function canDropAt(
+  module: CourseModule,
+  quarter: number,
+) {
   const field = findDraggedField(module)
   if (!field || busy.value) return false
 
@@ -683,7 +953,12 @@ function handleDragOver(
 
   event.preventDefault()
 
-  const quarter = quarterAtPointer(event, module, cellStartQuarter)
+  const quarter = quarterAtPointer(
+    event,
+    module,
+    cellStartQuarter,
+  )
+
   const valid = canDropAt(module, quarter)
 
   dropTarget.value = {
@@ -701,10 +976,15 @@ function clearDropTarget() {
   dropTarget.value = null
 }
 
-function dropCellClass(module: CourseModule, cellStartQuarter: number) {
+function dropCellClass(
+  module: CourseModule,
+  cellStartQuarter: number,
+) {
   const target = dropTarget.value
 
-  if (!target || target.moduleId !== module.id) return {}
+  if (!target || target.moduleId !== module.id) {
+    return {}
+  }
 
   const span =
     getFieldAtStart(module, cellStartQuarter)?.quarterSpan ?? 1
@@ -729,11 +1009,17 @@ async function dropField(
   event.preventDefault()
 
   const field = findDraggedField(module)
-  const quarter = quarterAtPointer(event, module, cellStartQuarter)
+
+  const quarter = quarterAtPointer(
+    event,
+    module,
+    cellStartQuarter,
+  )
 
   if (!field) {
     fieldError.value =
       'Du kannst das Feld nur innerhalb derselben Modulzeile verschieben.'
+
     clearDrag()
     return
   }
@@ -741,6 +1027,7 @@ async function dropField(
   if (!canDropAt(module, quarter)) {
     fieldError.value =
       'Der Zielbereich ist belegt oder reicht über Q12 hinaus.'
+
     clearDrag()
     return
   }
@@ -753,13 +1040,15 @@ async function dropField(
   fieldError.value = ''
 
   try {
-    await request(
+    const result = await request<SavedPosition>(
       `/lehrgang-module/${field.id}/position`,
-      json('PATCH', { startQuarter: quarter }),
+      json('PATCH', {
+        startQuarter: quarter,
+      }),
     )
 
-    // Erst nach erfolgreicher Speicherung verschieben.
-    field.startQuarter = quarter
+    field.startQuarter = Number(result.startQuarter)
+    field.quarterSpan = Number(result.quarterSpan)
 
     await loadCourses()
   } catch (error) {
@@ -784,6 +1073,7 @@ onMounted(loadCourses)
           <router-link to="/home" class="nav-link">
             Wochenplan
           </router-link>
+
           <router-link to="/lehrgang" class="nav-link">
             Lehrgänge
           </router-link>
@@ -799,7 +1089,11 @@ onMounted(loadCourses)
     </div>
 
     <main class="page-main">
-      <p v-if="loading" class="status-message" role="status">
+      <p
+        v-if="loading"
+        class="status-message"
+        role="status"
+      >
         Lehrgänge werden geladen...
       </p>
 
@@ -811,6 +1105,7 @@ onMounted(loadCourses)
         {{ apiError }}
       </p>
 
+      <!-- Lehrgangsliste -->
       <aside class="panel">
         <h2>Lehrgänge</h2>
 
@@ -832,11 +1127,14 @@ onMounted(loadCourses)
             v-model="newCourseName"
             type="text"
             placeholder="Lehrgangsname"
+            maxlength="255"
             :disabled="busy"
             required
           >
 
-          <label for="semesteranzahl">Anzahl Semester</label>
+          <label for="semesteranzahl">
+            Anzahl Semester
+          </label>
 
           <select
             id="semesteranzahl"
@@ -864,7 +1162,11 @@ onMounted(loadCourses)
             Abbrechen
           </button>
 
-          <p v-if="createCourseError" class="error-message" role="alert">
+          <p
+            v-if="createCourseError"
+            class="error-message"
+            role="alert"
+          >
             {{ createCourseError }}
           </p>
         </form>
@@ -878,11 +1180,16 @@ onMounted(loadCourses)
         >
 
         <ul class="item-list">
-          <li v-for="course in filteredCourses" :key="course.id">
+          <li
+            v-for="course in filteredCourses"
+            :key="course.id"
+          >
             <button
               type="button"
               class="list-button"
-              :class="{ selected: selectedCourseId === course.id }"
+              :class="{
+                selected: selectedCourseId === course.id,
+              }"
               :disabled="busy"
               @click="selectCourse(course.id)"
             >
@@ -891,24 +1198,36 @@ onMounted(loadCourses)
           </li>
         </ul>
 
-        <p v-if="!loading && filteredCourses.length === 0">
+        <p
+          v-if="
+            !loading &&
+            filteredCourses.length === 0
+          "
+        >
           Keine Lehrgänge gefunden.
         </p>
       </aside>
 
+      <!-- Lehrgang bearbeiten -->
       <section class="panel">
         <h2>Lehrgang bearbeiten</h2>
 
         <div v-if="selectedCourse">
           <h3>{{ selectedCourse.name }}</h3>
 
-          <form class="form-stack" @submit.prevent="renameCourse">
-            <label for="course-name">Lehrgangsname</label>
+          <form
+            class="form-stack"
+            @submit.prevent="renameCourse"
+          >
+            <label for="course-name">
+              Lehrgangsname
+            </label>
 
             <input
               id="course-name"
               v-model="editedCourseName"
               type="text"
+              maxlength="255"
               :disabled="busy"
               required
             >
@@ -921,7 +1240,11 @@ onMounted(loadCourses)
               Namen speichern
             </button>
 
-            <p v-if="editCourseError" class="error-message" role="alert">
+            <p
+              v-if="editCourseError"
+              class="error-message"
+              role="alert"
+            >
               {{ editCourseError }}
             </p>
           </form>
@@ -931,18 +1254,29 @@ onMounted(loadCourses)
           <h3>Lehrplan</h3>
 
           <p class="help-text">
-            Klicke auf ein freies Quartal und danach auf ein zweites
-            freies Quartal desselben Moduls, um einen Bereich anzulegen.
-            Ein Klick auf ein Lektionenfeld öffnet die Bearbeitung.
-            Ziehe ein Lektionenfeld mit gedrückter Maustaste auf ein
-            anderes Quartal derselben Modulzeile, um es zu verschieben.
+            Klicke auf ein Lektionenfeld, um die Lektionen
+            zu bearbeiten. Über „Quartale verbinden / Länge ändern“
+            wählst du Start- und Endquartal.
+            Zum Verschieben ziehst du das geschlossene Feld
+            auf ein anderes Quartal derselben Modulzeile.
           </p>
 
-          <p v-if="draggedField && dropTarget" class="drag-notice" role="status">
+          <p class="help-text">
+            Neue Bereiche legst du an, indem du zuerst auf
+            ein freies Startquartal und danach auf ein freies
+            Endquartal desselben Moduls klickst.
+          </p>
+
+          <p
+            v-if="draggedField && dropTarget"
+            class="drag-notice"
+            role="status"
+          >
             <template v-if="dropTarget.valid">
               Neuer Start: Q{{ dropTarget.quarter }}.
               Zum Verschieben loslassen.
             </template>
+
             <template v-else>
               Hier kann das Feld nicht abgelegt werden.
             </template>
@@ -988,19 +1322,25 @@ onMounted(loadCourses)
               </tr>
 
               <tr>
-                <th v-for="quarter in quarters" :key="quarter">
+                <th
+                  v-for="quarter in quarters"
+                  :key="quarter"
+                >
                   Q{{ quarter }}
                 </th>
               </tr>
               </thead>
 
               <tbody>
+              <!-- Vorhandene Module -->
               <tr
                 v-for="module in selectedCourse.modules"
                 :key="module.id"
               >
                 <th>
-                  <div class="module-name">{{ module.name }}</div>
+                  <div class="module-name">
+                    {{ module.name }}
+                  </div>
 
                   <button
                     type="button"
@@ -1012,38 +1352,145 @@ onMounted(loadCourses)
                   </button>
                 </th>
 
-                <template v-for="quarter in quarters" :key="quarter">
+                <template
+                  v-for="quarter in quarters"
+                  :key="quarter"
+                >
                   <td
-                    v-if="shouldRenderQuarter(module, quarter)"
+                    v-if="
+                        shouldRenderQuarter(module, quarter)
+                      "
                     :colspan="
                         getFieldAtStart(module, quarter)?.quarterSpan ?? 1
                       "
-                    :class="dropCellClass(module, quarter)"
-                    @dragover="handleDragOver($event, module, quarter)"
-                    @drop="dropField($event, module, quarter)"
+                    :class="
+                        dropCellClass(module, quarter)
+                      "
+                    @dragover="
+                        handleDragOver($event, module, quarter)
+                      "
+                    @drop="
+                        dropField($event, module, quarter)
+                      "
                   >
-                    <template v-if="getFieldAtStart(module, quarter)">
-                      <div
+                    <template
+                      v-if="
+                          getFieldAtStart(module, quarter)
+                        "
+                    >
+                      <!-- Geöffnetes Lektionenfeld -->
+                      <form
                         v-if="
                             editingFieldId ===
                             getFieldAtStart(module, quarter)!.id
                           "
                         class="lesson-editor"
+                        @submit.prevent="finishEditingField"
                       >
+                        <label
+                          :for="
+                              `lessons-${getFieldAtStart(module, quarter)!.id}`
+                            "
+                        >
+                          Lektionen gesamt
+                        </label>
+
                         <input
+                          :id="
+                              `lessons-${getFieldAtStart(module, quarter)!.id}`
+                            "
                           v-model.number="editedLessons"
                           type="number"
                           min="0"
+                          max="2147483647"
                           step="1"
-                          placeholder="Lektionen"
-                          aria-label="Anzahl Lektionen"
                           :disabled="busy"
+                          required
                         >
 
                         <button
+                          v-if="!showRangeEditor"
                           type="button"
+                          class="range-button"
                           :disabled="busy"
-                          @click="finishEditingField"
+                          @click="openRangeEditor"
+                        >
+                          Quartale verbinden / Länge ändern
+                        </button>
+
+                        <div
+                          v-if="showRangeEditor"
+                          class="range-editor"
+                        >
+                          <label
+                            :for="
+                                `range-start-${getFieldAtStart(module, quarter)!.id}`
+                              "
+                          >
+                            Von Quartal:
+                          </label>
+
+                          <select
+                            :id="
+                                `range-start-${getFieldAtStart(module, quarter)!.id}`
+                              "
+                            v-model.number="editedStartQuarter"
+                            :disabled="busy"
+                          >
+                            <option
+                              v-for="option in startQuarterOptions"
+                              :key="option.quarter"
+                              :value="option.quarter"
+                              :disabled="!option.available"
+                            >
+                              Q{{ option.quarter }}
+                              {{
+                                option.available
+                                  ? ''
+                                  : '– nicht verfügbar'
+                              }}
+                            </option>
+                          </select>
+
+                          <label
+                            :for="
+                                `range-end-${getFieldAtStart(module, quarter)!.id}`
+                              "
+                          >
+                            Bis Quartal:
+                          </label>
+
+                          <select
+                            :id="
+                                `range-end-${getFieldAtStart(module, quarter)!.id}`
+                              "
+                            v-model.number="editedEndQuarter"
+                            :disabled="busy"
+                          >
+                            <option
+                              v-for="option in endQuarterOptions"
+                              :key="option.quarter"
+                              :value="option.quarter"
+                              :disabled="!option.available"
+                            >
+                              Q{{ option.quarter }}
+                              {{
+                                option.available
+                                  ? ''
+                                  : '– nicht verfügbar'
+                              }}
+                            </option>
+                          </select>
+
+                          <p class="range-preview">
+                            {{ editedRangeText }}
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          class="primary-button"
+                          :disabled="busy"
                         >
                           Speichern
                         </button>
@@ -1051,7 +1498,7 @@ onMounted(loadCourses)
                         <button
                           type="button"
                           :disabled="busy"
-                          @click="editingFieldId = null"
+                          @click="cancelEditingField"
                         >
                           Abbrechen
                         </button>
@@ -1068,8 +1515,17 @@ onMounted(loadCourses)
                         >
                           Löschen
                         </button>
-                      </div>
 
+                        <p
+                          v-if="fieldError"
+                          class="error-message"
+                          role="alert"
+                        >
+                          {{ fieldError }}
+                        </p>
+                      </form>
+
+                      <!-- Geschlossenes Lektionenfeld -->
                       <button
                         v-else
                         type="button"
@@ -1080,10 +1536,14 @@ onMounted(loadCourses)
                               getFieldAtStart(module, quarter)!.id,
                           }"
                         :disabled="busy"
-                        :draggable="!busy && editingFieldId === null"
+                        :draggable="
+                            !busy && editingFieldId === null
+                          "
                         title="Klicken zum Bearbeiten, ziehen zum Verschieben"
                         @click="
-                            editField(getFieldAtStart(module, quarter)!)
+                            editField(
+                              getFieldAtStart(module, quarter)!,
+                            )
                           "
                         @dragstart="
                             startDrag(
@@ -1094,29 +1554,53 @@ onMounted(loadCourses)
                           "
                         @dragend="clearDrag"
                       >
-                        {{ getFieldAtStart(module, quarter)!.lessons }}
-                        Lektionen
+                          <span>
+                            {{
+                              getFieldAtStart(module, quarter)!.lessons
+                            }}
+                            Lektionen
+                          </span>
+
+                        <!-- Untertitel bei jedem Feld -->
+                        <small class="field-range">
+                          {{
+                            getFieldRangeText(
+                              getFieldAtStart(module, quarter)!,
+                            )
+                          }}
+                        </small>
                       </button>
                     </template>
 
+                    <!-- Freies Quartal -->
                     <button
                       v-else
                       type="button"
                       class="quarter-button"
                       :class="{
-                          selected: isSelectionStart(module.id, quarter),
+                          selected: isSelectionStart(
+                            module.id,
+                            quarter,
+                          ),
                         }"
-                      :disabled="busy"
-                      @click="handleQuarterClick(module, quarter)"
+                      :disabled="
+                          busy || editingFieldId !== null
+                        "
+                      @click="
+                          handleQuarterClick(module, quarter)
+                        "
                     >
                       {{
-                        isSelectionStart(module.id, quarter) ? '●' : '+'
+                        isSelectionStart(module.id, quarter)
+                          ? '●'
+                          : '+'
                       }}
                     </button>
                   </td>
                 </template>
               </tr>
 
+              <!-- Neues Modul direkt in der Tabelle -->
               <tr
                 v-if="showModuleForm"
                 id="new-module-row"
@@ -1128,7 +1612,9 @@ onMounted(loadCourses)
                     class="inline-module-form"
                     @submit.prevent="addModule"
                   >
-                    <label for="module-name">Neues Modul</label>
+                    <label for="module-name">
+                      Neues Modul
+                    </label>
 
                     <input
                       id="module-name"
@@ -1144,7 +1630,9 @@ onMounted(loadCourses)
                     <button
                       type="submit"
                       class="primary-button"
-                      :disabled="busy || !newModuleName.trim()"
+                      :disabled="
+                          busy || !newModuleName.trim()
+                        "
                     >
                       Modul speichern
                     </button>
@@ -1179,14 +1667,23 @@ onMounted(loadCourses)
             </table>
           </div>
 
-          <p v-if="selectedCourse.modules.length === 0 && !showModuleForm">
+          <p
+            v-if="
+              selectedCourse.modules.length === 0 &&
+              !showModuleForm
+            "
+          >
             Noch keine Module vorhanden.
           </p>
 
-          <div v-if="selection" class="selection-notice">
+          <div
+            v-if="selection"
+            class="selection-notice"
+          >
             <p>
-              Startquartal Q{{ selection.startQuarter }} ausgewählt.
-              Wähle ein zweites freies Quartal im gleichen Modul.
+              Startquartal Q{{ selection.startQuarter }}
+              ausgewählt. Wähle ein zweites freies
+              Quartal im gleichen Modul.
             </p>
 
             <button
@@ -1198,7 +1695,14 @@ onMounted(loadCourses)
             </button>
           </div>
 
-          <p v-if="fieldError" class="error-message" role="alert">
+          <p
+            v-if="
+              fieldError &&
+              editingFieldId === null
+            "
+            class="error-message"
+            role="alert"
+          >
             {{ fieldError }}
           </p>
 
@@ -1369,7 +1873,8 @@ select {
 
 input:focus,
 select:focus {
-  outline: none;
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
   border-color: #2563eb;
 }
 
@@ -1503,6 +2008,10 @@ tbody th {
 }
 
 .lesson-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
   width: 100%;
   padding: 8px;
   border: 1px solid #93c5fd;
@@ -1524,16 +2033,57 @@ tbody th {
   opacity: 0.4;
 }
 
+.field-range {
+  font-size: 11px;
+  font-weight: 400;
+}
+
 .lesson-editor {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 90px;
+  gap: 8px;
+  min-width: 150px;
+  margin: 0;
+  text-align: left;
+}
+
+.lesson-editor label {
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .lesson-editor input,
+.lesson-editor select,
 .lesson-editor button {
-  padding: 6px;
+  padding: 7px;
+}
+
+.range-button {
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+}
+
+.range-button:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.range-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.range-preview {
+  margin: 0;
+  color: #1d4ed8;
+  font-size: 12px;
 }
 
 td.drop-valid {
