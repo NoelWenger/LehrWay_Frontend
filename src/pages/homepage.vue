@@ -62,6 +62,7 @@ interface DBClassLabel {
   klasse_id: number
   label_id: number
   name: string
+  farbe: string
 }
 
 const weekdays: Weekday[] = [
@@ -71,6 +72,19 @@ const weekdays: Weekday[] = [
   'Donnerstag',
   'Freitag',
 ]
+
+const labelColors = [
+  { name: 'Blau', value: '#0d6efd' },
+  { name: 'Grau', value: '#6c757d' },
+  { name: 'Grün', value: '#198754' },
+  { name: 'Rot', value: '#dc3545' },
+  { name: 'Gelb', value: '#ffc107' },
+  { name: 'Türkis', value: '#0dcaf0' },
+  { name: 'Hell', value: '#f8f9fa' },
+  { name: 'Dunkel', value: '#212529' },
+]
+
+const defaultLabelColor = '#0d6efd'
 
 const currentYear = ref(new Date().getFullYear())
 const classes = ref<SchoolClass[]>([])
@@ -94,6 +108,7 @@ const loading = ref(false)
 // Labels
 const classLabels = ref<DBClassLabel[]>([])
 const newLabelName = ref('')
+const newLabelColor = ref(defaultLabelColor)
 const labelError = ref('')
 const labelLoadError = ref('')
 const labelsLoading = ref(false)
@@ -136,9 +151,7 @@ const availableRuleClasses = computed(() =>
 )
 
 const selectedClassLabels = computed(() =>
-  classLabels.value.filter(
-    label => label.klasse_id === selectedClassId.value,
-  ),
+  getClassLabels(selectedClassId.value),
 )
 
 const labelsBusy = computed(() =>
@@ -154,8 +167,60 @@ function getError(error: unknown): string {
 }
 
 // --------------------------------------------------
-// Labels unabhängig laden
+// Farben und Label-Darstellung
 // --------------------------------------------------
+
+function normalizeColor(value: unknown): string {
+  return typeof value === 'string' &&
+  /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value.toLowerCase()
+    : defaultLabelColor
+}
+
+// Je nach Hintergrund schwarze oder weiße Schrift wählen.
+function getLabelTextColor(color: string): string {
+  const hex = normalizeColor(color).slice(1)
+
+  const channels = [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ].map(value => {
+    const channel = value / 255
+
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4
+  })
+
+  const red = channels[0] ?? 0
+  const green = channels[1] ?? 0
+  const blue = channels[2] ?? 0
+
+  const luminance =
+    0.2126 * red +
+    0.7152 * green +
+    0.0722 * blue
+
+  return luminance > 0.179 ? '#000000' : '#ffffff'
+}
+
+function badgeStyle(color: string) {
+  const background = normalizeColor(color)
+
+  return {
+    backgroundColor: background,
+    color: getLabelTextColor(background),
+  }
+}
+
+function getClassLabels(classId: number | null) {
+  if (classId === null) return []
+
+  return classLabels.value.filter(
+    label => label.klasse_id === classId,
+  )
+}
 
 function normalizeLabel(row: DBClassLabel): DBClassLabel {
   const classId = Number(row.klasse_id)
@@ -168,15 +233,22 @@ function normalizeLabel(row: DBClassLabel): DBClassLabel {
     labelId <= 0 ||
     typeof row.name !== 'string'
   ) {
-    throw new Error('Die API hat ungültige Label-Daten zurückgegeben.')
+    throw new Error(
+      'Die API hat ungültige Label-Daten zurückgegeben.',
+    )
   }
 
   return {
     klasse_id: classId,
     label_id: labelId,
     name: row.name,
+    farbe: normalizeColor(row.farbe),
   }
 }
+
+// --------------------------------------------------
+// Labels unabhängig laden
+// --------------------------------------------------
 
 async function loadLabels() {
   if (labelsLoading.value) return
@@ -185,15 +257,17 @@ async function loadLabels() {
   labelLoadError.value = ''
 
   try {
-    const rows = await request<DBClassLabel[]>('/klasse-labels')
+    const rows = await request<DBClassLabel[]>(
+      '/klasse-labels',
+    )
 
     if (!Array.isArray(rows)) {
-      throw new Error('Die API hat keine Label-Liste zurückgegeben.')
+      throw new Error(
+        'Die API hat keine Label-Liste zurückgegeben.',
+      )
     }
 
     const normalized = rows.map(normalizeLabel)
-
-    // Doppelte vorhandene Zuordnungen nur einmal anzeigen.
     const uniqueLabels = new Map<string, DBClassLabel>()
 
     for (const label of normalized) {
@@ -206,16 +280,13 @@ async function loadLabels() {
   } catch (error) {
     labelsLoaded.value = false
     labelLoadError.value = getError(error)
-
-    // Ein Label-Fehler leert keine Klassen oder Lehrgänge.
-    // Bereits geladene Labels bleiben ebenfalls erhalten.
   } finally {
     labelsLoading.value = false
   }
 }
 
 // --------------------------------------------------
-// Bisherige Daten laden
+// Wochenplan laden
 // --------------------------------------------------
 
 async function loadData() {
@@ -224,8 +295,6 @@ async function loadData() {
   loading.value = true
   apiError.value = ''
 
-  // Eigene Fehlerbehandlung: Labels beeinflussen die
-  // übrigen API-Aufrufe nicht.
   const labelsRequest = loadLabels()
 
   try {
@@ -243,32 +312,38 @@ async function loadData() {
       request<DBLehrgang[]>('/lehrgaenge'),
     ])
 
-    lehrgaenge.value = dbLehrgaenge
+    lehrgaenge.value = dbLehrgaenge.map(course => ({
+      id: Number(course.id),
+      bezeichnung: course.bezeichnung,
+    }))
 
     roomCapacities.value = dbRooms.map(room => ({
-      id: room.id,
+      id: Number(room.id),
       day: room.wochentag,
-      capacity: room.anzahl_raeume,
+      capacity: Number(room.anzahl_raeume),
     }))
 
     classes.value = dbClasses.map(klasse => ({
-      id: klasse.id,
+      id: Number(klasse.id),
       name: klasse.bezeichnung,
-      lehrgang_id: klasse.lehrgang_id,
+      lehrgang_id:
+        klasse.lehrgang_id === null
+          ? null
+          : Number(klasse.lehrgang_id),
       schoolDays: dbRooms
         .filter(room =>
           assignments.some(assignment =>
-            assignment.klasse_id === klasse.id &&
-            assignment.ressourcen_id === room.id,
+            Number(assignment.klasse_id) === Number(klasse.id) &&
+            Number(assignment.ressourcen_id) === Number(room.id),
           ),
         )
         .map(room => room.wochentag),
     }))
 
     rules.value = dbRules.map(rule => ({
-      id: rule.id,
-      classAId: rule.klasse_a_id,
-      classBId: rule.klasse_b_id,
+      id: Number(rule.id),
+      classAId: Number(rule.klasse_a_id),
+      classBId: Number(rule.klasse_b_id),
     }))
 
     if (
@@ -278,8 +353,7 @@ async function loadData() {
       )
     ) {
       selectedClassId.value = null
-      newLabelName.value = ''
-      labelError.value = ''
+      resetLabelForm()
     }
   } catch (error) {
     apiError.value = getError(error)
@@ -293,19 +367,26 @@ async function loadData() {
   }
 }
 
+function resetLabelForm() {
+  newLabelName.value = ''
+  newLabelColor.value = defaultLabelColor
+  labelError.value = ''
+}
+
 function selectClass(id: number) {
+  if (labelSaving.value) return
+
   selectedClassId.value = id
   editedClassName.value =
     classes.value.find(klasse => klasse.id === id)?.name ?? ''
 
   selectedRuleClassId.value = null
   editClassError.value = ''
-  newLabelName.value = ''
-  labelError.value = ''
+  resetLabelForm()
 }
 
 // --------------------------------------------------
-// Klasse erstellen
+// Klassen erstellen und bearbeiten
 // --------------------------------------------------
 
 async function createClass() {
@@ -346,17 +427,14 @@ function cancelCreateClass() {
   classError.value = ''
 }
 
-// --------------------------------------------------
-// Klasse umbenennen
-// --------------------------------------------------
-
 async function renameClass() {
   if (!selectedClass.value) return
 
   const name = editedClassName.value.trim()
 
   if (!name) {
-    editClassError.value = 'Der Klassenname darf nicht leer sein.'
+    editClassError.value =
+      'Der Klassenname darf nicht leer sein.'
     return
   }
 
@@ -373,10 +451,6 @@ async function renameClass() {
   }
 }
 
-// --------------------------------------------------
-// Klasse löschen
-// --------------------------------------------------
-
 async function deleteClass() {
   if (!selectedClass.value || labelSaving.value) return
 
@@ -387,15 +461,17 @@ async function deleteClass() {
   const classId = selectedClass.value.id
 
   try {
-    await request(`/klassen/${classId}`, json('DELETE'))
+    await request(
+      `/klassen/${classId}`,
+      json('DELETE'),
+    )
 
     classLabels.value = classLabels.value.filter(
       label => label.klasse_id !== classId,
     )
 
     selectedClassId.value = null
-    newLabelName.value = ''
-    labelError.value = ''
+    resetLabelForm()
 
     await loadData()
   } catch (error) {
@@ -407,7 +483,10 @@ async function deleteClass() {
 // Schultage und Räume
 // --------------------------------------------------
 
-function hasSchool(klasse: SchoolClass, day: Weekday) {
+function hasSchool(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
   return klasse.schoolDays.includes(day)
 }
 
@@ -416,7 +495,7 @@ async function toggleSchoolDay(
   day: Weekday,
 ) {
   const room = roomCapacities.value.find(
-    room => room.day === day,
+    entry => entry.day === day,
   )
 
   if (!room) {
@@ -460,7 +539,7 @@ async function changeRoomCapacity(
   amount: number,
 ) {
   const room = roomCapacities.value.find(
-    room => room.day === day,
+    entry => entry.day === day,
   )
 
   if (!room) return
@@ -484,7 +563,8 @@ function hasRoomConflict(day: Weekday) {
 }
 
 function getRoomConflictText(day: Weekday) {
-  const missing = getUsedRooms(day) - getRoomCapacity(day)
+  const missing =
+    getUsedRooms(day) - getRoomCapacity(day)
 
   return `${missing} ${missing === 1 ? 'Raum' : 'Räume'} zu wenig`
 }
@@ -516,7 +596,11 @@ async function addRule() {
 
 async function removeRule(ruleId: number) {
   try {
-    await request(`/regeln/${ruleId}`, json('DELETE'))
+    await request(
+      `/regeln/${ruleId}`,
+      json('DELETE'),
+    )
+
     await loadData()
   } catch (error) {
     apiError.value = getError(error)
@@ -585,7 +669,7 @@ function getConflictText(
 }
 
 // --------------------------------------------------
-// Labels hinzufügen und entfernen
+// Labels hinzufügen, einfärben und entfernen
 // --------------------------------------------------
 
 async function addLabel() {
@@ -614,7 +698,9 @@ async function addLabel() {
         label.name.trim().toLowerCase() === name.toLowerCase(),
     )
   ) {
-    labelError.value = 'Diese Klasse hat dieses Label bereits.'
+    labelError.value =
+      'Diese Klasse hat dieses Label bereits. ' +
+      'Du kannst seine Farbe direkt am Label ändern.'
     return
   }
 
@@ -623,28 +709,62 @@ async function addLabel() {
   try {
     const result = await request<DBClassLabel>(
       `/klassen/${classId}/labels`,
-      json('POST', { name }),
+      json('POST', {
+        name,
+        farbe: normalizeColor(newLabelColor.value),
+      }),
     )
 
     const assignment = normalizeLabel(result)
 
-    if (
-      !classLabels.value.some(
-        label =>
-          label.klasse_id === assignment.klasse_id &&
-          label.label_id === assignment.label_id,
-      )
-    ) {
-      classLabels.value.push(assignment)
-    }
+    classLabels.value = classLabels.value.filter(
+      label =>
+        label.klasse_id !== assignment.klasse_id ||
+        label.label_id !== assignment.label_id,
+    )
 
-    if (selectedClassId.value === classId) {
-      newLabelName.value = ''
-    }
+    classLabels.value.push(assignment)
+
+    newLabelName.value = ''
   } catch (error) {
-    if (selectedClassId.value === classId) {
-      labelError.value = getError(error)
-    }
+    labelError.value = getError(error)
+  } finally {
+    labelSaving.value = false
+  }
+}
+
+async function changeLabelColor(
+  label: DBClassLabel,
+  event: Event,
+) {
+  const input = event.target as HTMLInputElement
+
+  if (labelsBusy.value || !labelsLoaded.value) {
+    input.value = label.farbe
+    return
+  }
+
+  const color = normalizeColor(input.value)
+
+  if (color === label.farbe) return
+
+  labelError.value = ''
+  labelSaving.value = true
+
+  try {
+    const result = await request<{
+      klasse_id: number
+      label_id: number
+      farbe: string
+    }>(
+      `/klassen/${label.klasse_id}/labels/${label.label_id}/farbe`,
+      json('PATCH', { farbe: color }),
+    )
+
+    label.farbe = normalizeColor(result.farbe)
+  } catch (error) {
+    input.value = label.farbe
+    labelError.value = getError(error)
   } finally {
     labelSaving.value = false
   }
@@ -676,15 +796,13 @@ async function removeLabel(labelId: number) {
         label.label_id !== labelId,
     )
   } catch (error) {
-    if (selectedClassId.value === classId) {
-      labelError.value = getError(error)
-    }
+    labelError.value = getError(error)
   } finally {
     labelSaving.value = false
   }
 }
 
-// Schuljahre sind in der Datenbank noch nicht hinterlegt.
+// Schuljahre sind noch nicht in der Datenbank zugeordnet.
 function changeSchoolYear(_direction: number) {
   apiError.value =
     'Der Schuljahreswechsel benötigt noch eine ' +
@@ -722,7 +840,7 @@ onMounted(loadData)
     </div>
 
     <main class="page-main">
-      <p v-if="loading" class="status-message">
+      <p v-if="loading" class="status-message" role="status">
         Daten werden geladen...
       </p>
 
@@ -751,6 +869,7 @@ onMounted(loadData)
             v-model="newClassName"
             type="text"
             placeholder="Klassenname"
+            maxlength="50"
             required
           >
 
@@ -772,7 +891,10 @@ onMounted(loadData)
             Erstellen
           </button>
 
-          <button type="button" @click="cancelCreateClass">
+          <button
+            type="button"
+            @click="cancelCreateClass"
+          >
             Abbrechen
           </button>
 
@@ -783,8 +905,9 @@ onMounted(loadData)
 
         <input
           v-model="searchQuery"
-          type="text"
+          type="search"
           placeholder="Klassen suchen"
+          aria-label="Klassen suchen"
           class="search-input"
         >
 
@@ -820,6 +943,7 @@ onMounted(loadData)
           <div class="year-navigation">
             <button
               type="button"
+              aria-label="Vorheriges Schuljahr"
               @click="changeSchoolYear(-1)"
             >
               ←
@@ -829,6 +953,7 @@ onMounted(loadData)
 
             <button
               type="button"
+              aria-label="Nächstes Schuljahr"
               @click="changeSchoolYear(1)"
             >
               →
@@ -840,26 +965,72 @@ onMounted(loadData)
           <table>
             <thead>
             <tr>
-              <th>Klasse</th>
+              <th scope="col">Klasse</th>
 
-              <th v-for="day in weekdays" :key="day">
+              <th
+                v-for="day in weekdays"
+                :key="day"
+                scope="col"
+              >
                 {{ day }}
               </th>
             </tr>
             </thead>
 
             <tbody>
-            <tr v-for="klasse in classes" :key="klasse.id">
-              <th>{{ klasse.name }}</th>
+            <tr
+              v-for="klasse in classes"
+              :key="klasse.id"
+            >
+              <th
+                scope="row"
+                class="class-name-cell"
+                :class="{
+                    'selected-class-cell':
+                      selectedClassId === klasse.id,
+                  }"
+              >
+                  <span class="table-class-name">
+                    {{ klasse.name }}
+                  </span>
 
-              <td v-for="day in weekdays" :key="day">
+                <!-- Labels der ausgewählten Klasse -->
+                <div
+                  v-if="
+                      selectedClassId === klasse.id &&
+                      getClassLabels(klasse.id).length
+                    "
+                  class="table-labels"
+                  :aria-label="`Labels von ${klasse.name}`"
+                >
+                    <span
+                      v-for="label in getClassLabels(klasse.id)"
+                      :key="label.label_id"
+                      class="label-badge table-label-badge"
+                      :style="badgeStyle(label.farbe)"
+                    >
+                      {{ label.name }}
+                    </span>
+                </div>
+              </th>
+
+              <td
+                v-for="day in weekdays"
+                :key="day"
+              >
                 <button
                   type="button"
                   class="school-day-button"
-                  :class="{ active: hasSchool(klasse, day) }"
+                  :class="{
+                      active: hasSchool(klasse, day),
+                    }"
                   @click="toggleSchoolDay(klasse, day)"
                 >
-                  {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
+                  {{
+                    hasSchool(klasse, day)
+                      ? 'Schule'
+                      : '–'
+                  }}
 
                   <span
                     v-if="hasConflict(klasse, day)"
@@ -875,9 +1046,12 @@ onMounted(loadData)
 
             <tfoot>
             <tr>
-              <th>Räume</th>
+              <th scope="row">Räume</th>
 
-              <td v-for="day in weekdays" :key="day">
+              <td
+                v-for="day in weekdays"
+                :key="day"
+              >
                 <div class="room-controls">
                     <span>
                       {{ getUsedRooms(day) }} /
@@ -895,6 +1069,7 @@ onMounted(loadData)
                   <div>
                     <button
                       type="button"
+                      :aria-label="`${day}: Raumanzahl erhöhen`"
                       @click="changeRoomCapacity(day, 1)"
                     >
                       ▲
@@ -902,6 +1077,7 @@ onMounted(loadData)
 
                     <button
                       type="button"
+                      :aria-label="`${day}: Raumanzahl verringern`"
                       @click="changeRoomCapacity(day, -1)"
                     >
                       ▼
@@ -934,10 +1110,14 @@ onMounted(loadData)
               id="class-name"
               v-model="editedClassName"
               type="text"
+              maxlength="50"
               required
             >
 
-            <button type="submit" class="primary-button">
+            <button
+              type="submit"
+              class="primary-button"
+            >
               Namen speichern
             </button>
 
@@ -957,7 +1137,10 @@ onMounted(loadData)
             Labels werden geladen...
           </p>
 
-          <div v-if="labelLoadError" class="label-load-error">
+          <div
+            v-if="labelLoadError"
+            class="label-load-error"
+          >
             <p class="api-error" role="alert">
               Labels konnten nicht geladen werden:
               {{ labelLoadError }}
@@ -976,12 +1159,26 @@ onMounted(loadData)
             <li
               v-for="label in selectedClassLabels"
               :key="label.label_id"
-              class="class-label"
+              class="label-badge editable-label"
+              :style="badgeStyle(label.farbe)"
             >
-              <span>{{ label.name }}</span>
+              <span class="label-name">
+                {{ label.name }}
+              </span>
+
+              <input
+                class="badge-color-input"
+                type="color"
+                :value="label.farbe"
+                :disabled="labelsBusy || !labelsLoaded"
+                :aria-label="`Farbe für ${label.name} ändern`"
+                title="Labelfarbe ändern"
+                @change="changeLabelColor(label, $event)"
+              >
 
               <button
                 type="button"
+                class="remove-label-button"
                 :disabled="labelsBusy || !labelsLoaded"
                 :aria-label="
                   `Label ${label.name} von dieser Klasse entfernen`
@@ -1004,8 +1201,15 @@ onMounted(loadData)
             Noch keine Labels vorhanden.
           </p>
 
+          <p
+            v-if="selectedClassLabels.length"
+            class="help-text label-help"
+          >
+            Über das kleine Farbfeld kannst du die Farbe ändern.
+          </p>
+
           <form
-            class="form-stack"
+            class="form-stack label-form"
             @submit.prevent="addLabel"
           >
             <label for="new-class-label">
@@ -1022,8 +1226,70 @@ onMounted(loadData)
               required
             >
 
+            <fieldset
+              class="label-color-fieldset"
+              :disabled="labelsBusy || !labelsLoaded"
+            >
+              <legend>Farbe auswählen</legend>
+
+              <div class="color-palette">
+                <button
+                  v-for="color in labelColors"
+                  :key="color.value"
+                  type="button"
+                  class="color-swatch"
+                  :class="{
+                    'color-swatch-selected':
+                      newLabelColor === color.value,
+                  }"
+                  :style="{
+                    backgroundColor: color.value,
+                    color: getLabelTextColor(color.value),
+                  }"
+                  :aria-label="color.name"
+                  :aria-pressed="newLabelColor === color.value"
+                  :title="color.name"
+                  @click="newLabelColor = color.value"
+                >
+                  <span
+                    v-if="newLabelColor === color.value"
+                    aria-hidden="true"
+                  >
+                    ✓
+                  </span>
+                </button>
+              </div>
+
+              <div class="custom-color-row">
+                <label for="new-label-color">
+                  Eigene Farbe
+                </label>
+
+                <input
+                  id="new-label-color"
+                  v-model="newLabelColor"
+                  type="color"
+                  class="custom-color-input"
+                >
+              </div>
+            </fieldset>
+
+            <div class="label-preview">
+              <span class="preview-caption">
+                Vorschau
+              </span>
+
+              <span
+                class="label-badge"
+                :style="badgeStyle(newLabelColor)"
+              >
+                {{ newLabelName.trim() || 'Dein Label' }}
+              </span>
+            </div>
+
             <button
               type="submit"
+              class="primary-button"
               :disabled="
                 labelsBusy ||
                 !labelsLoaded ||
@@ -1089,7 +1355,12 @@ onMounted(loadData)
               :key="rule.id"
             >
               <span>
-                {{ getOtherClassName(rule, selectedClass.id) }}
+                {{
+                  getOtherClassName(
+                    rule,
+                    selectedClass.id,
+                  )
+                }}
               </span>
 
               <button
@@ -1257,8 +1528,14 @@ select {
 
 input:focus,
 select:focus {
-  outline: none;
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
   border-color: #2563eb;
+}
+
+button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
 }
 
 .primary-button {
@@ -1270,7 +1547,7 @@ select:focus {
   font-weight: 600;
 }
 
-.primary-button:hover {
+.primary-button:hover:not(:disabled) {
   background: #1d4ed8;
 }
 
@@ -1369,6 +1646,28 @@ tfoot th {
   background: #f8fafc;
 }
 
+.class-name-cell {
+  min-width: 110px;
+  max-width: 190px;
+  vertical-align: middle;
+}
+
+.table-class-name {
+  display: block;
+}
+
+.selected-class-cell {
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.table-labels {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 9px;
+}
+
 .school-day-button {
   width: 100%;
   padding: 9px 6px;
@@ -1419,10 +1718,14 @@ tfoot th {
   padding: 10px 14px;
 }
 
-/* Labels */
+/* Farbige Pill-Labels */
 .help-text {
   color: #64748b;
-  font-size: 14px;
+  font-size: 13px;
+}
+
+.label-help {
+  line-height: 1.5;
 }
 
 .label-load-error {
@@ -1437,51 +1740,164 @@ tfoot th {
   flex-wrap: wrap;
   gap: 8px;
   padding: 0;
-  margin: 12px 0;
+  margin: 14px 0;
   list-style: none;
 }
 
-.class-label {
+.label-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 7px;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 6px 10px;
-  border: 1px solid #bfdbfe;
-  border-radius: 16px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 13px;
+  padding: 5px 11px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-.class-label span {
+.editable-label {
+  padding-right: 6px;
+}
+
+.label-name {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.class-label button {
+.table-label-badge {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.remove-label-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 23px;
+  height: 23px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #1d4ed8;
-  font-size: 20px;
+  color: inherit;
+  font-size: 19px;
+  line-height: 1;
 }
 
-.class-label button:hover:not(:disabled) {
-  background: #dbeafe;
+.remove-label-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.15);
 }
 
-.class-label button:focus-visible {
-  outline: 2px solid #2563eb;
+.badge-color-input {
+  width: 19px;
+  height: 19px;
+  min-width: 19px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.badge-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.badge-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.badge-color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.badge-color-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Farbauswahl */
+.label-color-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.label-color-fieldset legend {
+  padding: 0 4px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 3px;
+}
+
+.color-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.color-swatch-selected {
+  outline: 2px solid #172033;
   outline-offset: 2px;
+}
+
+.custom-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.custom-color-row label {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.custom-color-input {
+  width: 42px;
+  height: 30px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.label-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 0;
+}
+
+.preview-caption {
+  color: #64748b;
+  font-size: 12px;
 }
 
 /* Responsive Design */
