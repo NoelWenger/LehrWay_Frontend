@@ -3,33 +3,18 @@ import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
-import ClassLabels from '@/components/ClassLabels.vue'
+import WeeklySchedule from '@/components/WeeklySchedule.vue'
+import ClassEditor from '@/components/ClassEditor.vue'
 
-type Weekday =
-  | 'Montag'
-  | 'Dienstag'
-  | 'Mittwoch'
-  | 'Donnerstag'
-  | 'Freitag'
-
-interface SchoolClass {
-  id: number
-  name: string
-  schoolDays: Weekday[]
-  lehrgang_id: number | null
-}
-
-interface ClassRule {
-  id: number
-  classAId: number
-  classBId: number
-}
-
-interface RoomCapacity {
-  id: number
-  day: Weekday
-  capacity: number
-}
+import type {
+  ClassLabel,
+  ClassRule,
+  LabelColorChange,
+  LabelRemoval,
+  RoomCapacity,
+  SchoolClass,
+  Weekday,
+} from '@/types/lehrway'
 
 interface DBClass {
   id: number
@@ -59,156 +44,69 @@ interface DBLehrgang {
   bezeichnung: string
 }
 
-interface ClassLabel {
-  klasse_id: number
-  label_id: number
-  name: string
-  farbe: string
-}
-
-interface LabelColorChange {
-  label_id: number
-  farbe: string
-}
-
-interface LabelRemoval {
-  klasse_id: number
-  label_id: number
-}
-
-const weekdays: Weekday[] = [
-  'Montag',
-  'Dienstag',
-  'Mittwoch',
-  'Donnerstag',
-  'Freitag',
-]
-
-const currentYear = ref(new Date().getFullYear())
 const classes = ref<SchoolClass[]>([])
 const rules = ref<ClassRule[]>([])
-const roomCapacities = ref<RoomCapacity[]>([])
-const lehrgaenge = ref<DBLehrgang[]>([])
+const rooms = ref<RoomCapacity[]>([])
+const courses = ref<DBLehrgang[]>([])
+const labels = ref<ClassLabel[]>([])
 
 const searchQuery = ref('')
 const selectedClassId = ref<number | null>(null)
-const selectedRuleClassId = ref<number | null>(null)
-const selectedLehrgangId = ref<number | null>(null)
+
+const loading = ref(false)
+const saving = ref(false)
+const labelSaving = ref(false)
+const labelsLoading = ref(false)
+const labelsReady = ref(false)
+
+const apiError = ref('')
+const classError = ref('')
+const editError = ref('')
+const labelLoadError = ref('')
 
 const showCreateClass = ref(false)
 const newClassName = ref('')
-const editedClassName = ref('')
+const selectedCourseId = ref<number | null>(null)
 
-const classError = ref('')
-const editClassError = ref('')
-const apiError = ref('')
-const loading = ref(false)
-const saving = ref(false)
-
-const classLabels = ref<ClassLabel[]>([])
-const labelsLoading = ref(false)
-const labelsLoaded = ref(false)
-const labelLoadError = ref('')
-const labelSaving = ref(false)
+const currentYear = new Date().getFullYear()
+const schoolYear =
+  `${currentYear}/${String(currentYear + 1).slice(-2)}`
 
 const busy = computed(() =>
   loading.value || saving.value || labelSaving.value,
 )
 
-const schoolYearLabel = computed(() =>
-  `${currentYear.value}/${String(currentYear.value + 1).slice(-2)}`,
+const selectedClass = computed(() =>
+  classes.value.find(
+    klasse => klasse.id === selectedClassId.value,
+  ) ?? null,
+)
+
+const selectedLabels = computed(() =>
+  labels.value.filter(
+    label => label.klasse_id === selectedClassId.value,
+  ),
 )
 
 const filteredClasses = computed(() => {
   const search = searchQuery.value.trim().toLowerCase()
 
-  return classes.value.filter(klasse =>
-    klasse.name.toLowerCase().includes(search),
+  return classes.value.filter(
+    klasse => klasse.name.toLowerCase().includes(search),
   )
 })
 
-const selectedClass = computed(() =>
-  classes.value.find(
-    klasse => klasse.id === selectedClassId.value,
-  ),
-)
-
-const selectedClassRules = computed(() =>
-  rules.value.filter(rule =>
-    rule.classAId === selectedClassId.value ||
-    rule.classBId === selectedClassId.value,
-  ),
-)
-
-const availableRuleClasses = computed(() =>
-  classes.value.filter(klasse =>
-    klasse.id !== selectedClassId.value &&
-    !selectedClassRules.value.some(rule =>
-      rule.classAId === klasse.id ||
-      rule.classBId === klasse.id,
-    ),
-  ),
-)
-
-const selectedClassLabels = computed(() =>
-  getClassLabels(selectedClassId.value),
-)
-
-function getError(error: unknown): string {
+function getError(error: unknown) {
   return error instanceof Error
     ? error.message
     : 'Ein unbekannter Fehler ist aufgetreten.'
 }
 
-function normalizeColor(value: unknown): string {
+function normalizeColor(value: unknown) {
   return typeof value === 'string' &&
   /^#[0-9a-fA-F]{6}$/.test(value)
     ? value.toLowerCase()
     : '#0d6efd'
-}
-
-function getLabelTextColor(color: string): string {
-  const hex = normalizeColor(color).slice(1)
-
-  const channels = [
-    Number.parseInt(hex.slice(0, 2), 16),
-    Number.parseInt(hex.slice(2, 4), 16),
-    Number.parseInt(hex.slice(4, 6), 16),
-  ].map(value => {
-    const channel = value / 255
-
-    return channel <= 0.04045
-      ? channel / 12.92
-      : ((channel + 0.055) / 1.055) ** 2.4
-  })
-
-  const luminance =
-    0.2126 * (channels[0] ?? 0) +
-    0.7152 * (channels[1] ?? 0) +
-    0.0722 * (channels[2] ?? 0)
-
-  return luminance > 0.179 ? '#000000' : '#ffffff'
-}
-
-function badgeStyle(color: string) {
-  const background = normalizeColor(color)
-
-  return {
-    backgroundColor: background,
-    color: getLabelTextColor(background),
-  }
-}
-
-// --------------------------------------------------
-// Labels laden und Ereignisse der Komponente übernehmen
-// --------------------------------------------------
-
-function getClassLabels(classId: number | null) {
-  if (classId === null) return []
-
-  return classLabels.value.filter(
-    label => label.klasse_id === classId,
-  )
 }
 
 async function loadLabels() {
@@ -224,7 +122,7 @@ async function loadLabels() {
       throw new Error('Die API hat keine Label-Liste zurückgegeben.')
     }
 
-    const uniqueLabels = new Map<string, ClassLabel>()
+    const result = new Map<string, ClassLabel>()
 
     for (const row of rows) {
       const classId = Number(row.klasse_id)
@@ -240,7 +138,7 @@ async function loadLabels() {
         throw new Error('Die API hat ungültige Label-Daten zurückgegeben.')
       }
 
-      uniqueLabels.set(`${classId}:${labelId}`, {
+      result.set(`${classId}:${labelId}`, {
         klasse_id: classId,
         label_id: labelId,
         name: row.name,
@@ -248,53 +146,15 @@ async function loadLabels() {
       })
     }
 
-    classLabels.value = [...uniqueLabels.values()]
-    labelsLoaded.value = true
+    labels.value = [...result.values()]
+    labelsReady.value = true
   } catch (error) {
-    labelsLoaded.value = false
+    labelsReady.value = false
     labelLoadError.value = getError(error)
   } finally {
     labelsLoading.value = false
   }
 }
-
-function onLabelSaved(assignment: ClassLabel) {
-  // Bereits geladene Kopien desselben gemeinsamen Labels aktualisieren.
-  for (const label of classLabels.value) {
-    if (label.label_id === assignment.label_id) {
-      label.name = assignment.name
-      label.farbe = assignment.farbe
-    }
-  }
-
-  classLabels.value = classLabels.value.filter(
-    label =>
-      label.klasse_id !== assignment.klasse_id ||
-      label.label_id !== assignment.label_id,
-  )
-
-  classLabels.value.push(assignment)
-}
-
-function onLabelColorChanged(change: LabelColorChange) {
-  for (const label of classLabels.value) {
-    if (label.label_id === change.label_id) {
-      label.farbe = normalizeColor(change.farbe)
-    }
-  }
-}
-
-function onLabelRemoved(removal: LabelRemoval) {
-  classLabels.value = classLabels.value.filter(
-    label =>
-      label.klasse_id !== removal.klasse_id ||
-      label.label_id !== removal.label_id,
-  )
-}
-
-// --------------------------------------------------
-// Wochenplan laden
-// --------------------------------------------------
 
 async function loadData() {
   if (loading.value) return
@@ -302,7 +162,7 @@ async function loadData() {
   loading.value = true
   apiError.value = ''
 
-  const labelsRequest = loadLabels()
+  const labelRequest = loadLabels()
 
   try {
     const [
@@ -310,7 +170,7 @@ async function loadData() {
       dbRooms,
       dbRules,
       assignments,
-      dbLehrgaenge,
+      dbCourses,
     ] = await Promise.all([
       request<DBClass[]>('/klassen'),
       request<DBRoom[]>('/ressourcen'),
@@ -319,12 +179,12 @@ async function loadData() {
       request<DBLehrgang[]>('/lehrgaenge'),
     ])
 
-    lehrgaenge.value = dbLehrgaenge.map(course => ({
+    courses.value = dbCourses.map(course => ({
       id: Number(course.id),
       bezeichnung: course.bezeichnung,
     }))
 
-    roomCapacities.value = dbRooms.map(room => ({
+    rooms.value = dbRooms.map(room => ({
       id: Number(room.id),
       day: room.wochentag,
       capacity: Number(room.anzahl_raeume),
@@ -334,7 +194,7 @@ async function loadData() {
       id: Number(klasse.id),
       name: klasse.bezeichnung,
       lehrgang_id:
-        klasse.lehrgang_id === null
+        klasse.lehrgang_id == null
           ? null
           : Number(klasse.lehrgang_id),
       schoolDays: dbRooms
@@ -363,25 +223,10 @@ async function loadData() {
     }
   } catch (error) {
     apiError.value = getError(error)
-    classes.value = []
-    rules.value = []
-    roomCapacities.value = []
-    lehrgaenge.value = []
   } finally {
-    await labelsRequest
+    await labelRequest
     loading.value = false
   }
-}
-
-function selectClass(id: number) {
-  if (busy.value) return
-
-  selectedClassId.value = id
-  editedClassName.value =
-    selectedClass.value?.name ?? ''
-
-  selectedRuleClassId.value = null
-  editClassError.value = ''
 }
 
 async function saveChange(
@@ -403,13 +248,14 @@ async function saveChange(
   }
 }
 
-// --------------------------------------------------
-// Klassen verwalten
-// --------------------------------------------------
-
-async function createClass() {
+function selectClass(id: number) {
   if (busy.value) return
 
+  selectedClassId.value = id
+  editError.value = ''
+}
+
+async function createClass() {
   const name = newClassName.value.trim()
   classError.value = ''
 
@@ -419,12 +265,12 @@ async function createClass() {
     return
   }
 
-  if (selectedLehrgangId.value === null) {
+  const courseId = selectedCourseId.value
+
+  if (courseId === null) {
     classError.value = 'Bitte einen Lehrgang auswählen.'
     return
   }
-
-  const courseId = selectedLehrgangId.value
 
   await saveChange(async () => {
     await request('/klassen', json('POST', {
@@ -434,7 +280,7 @@ async function createClass() {
     }))
 
     newClassName.value = ''
-    selectedLehrgangId.value = null
+    selectedCourseId.value = null
     showCreateClass.value = false
   }, message => {
     classError.value = message
@@ -446,19 +292,19 @@ function cancelCreateClass() {
 
   showCreateClass.value = false
   newClassName.value = ''
-  selectedLehrgangId.value = null
+  selectedCourseId.value = null
   classError.value = ''
 }
 
-async function renameClass() {
+async function renameClass(value: string) {
   const klasse = selectedClass.value
   if (!klasse || busy.value) return
 
-  const name = editedClassName.value.trim()
-  editClassError.value = ''
+  const name = value.trim()
+  editError.value = ''
 
   if (!name || Array.from(name).length > 50) {
-    editClassError.value =
+    editError.value =
       'Bitte einen Klassennamen mit 1 bis 50 Zeichen eingeben.'
     return
   }
@@ -471,7 +317,7 @@ async function renameClass() {
 
     klasse.name = name
   }, message => {
-    editClassError.value = message
+    editError.value = message
   })
 }
 
@@ -486,51 +332,42 @@ async function deleteClass() {
   await saveChange(async () => {
     await request(`/klassen/${klasse.id}`, json('DELETE'))
 
-    classLabels.value = classLabels.value.filter(
+    classes.value = classes.value.filter(
+      entry => entry.id !== klasse.id,
+    )
+
+    labels.value = labels.value.filter(
       label => label.klasse_id !== klasse.id,
     )
 
     selectedClassId.value = null
-    selectedRuleClassId.value = null
   }, message => {
     apiError.value = message
   })
 }
 
-// --------------------------------------------------
-// Schultage und Räume
-// --------------------------------------------------
+async function toggleSchoolDay(classId: number, day: Weekday) {
+  const klasse = classes.value.find(entry => entry.id === classId)
+  const room = rooms.value.find(entry => entry.day === day)
 
-function hasSchool(klasse: SchoolClass, day: Weekday) {
-  return klasse.schoolDays.includes(day)
-}
-
-async function toggleSchoolDay(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  if (busy.value) return
-
-  const room = roomCapacities.value.find(
-    entry => entry.day === day,
-  )
+  if (!klasse || busy.value) return
 
   if (!room) {
     apiError.value = `Keine Ressource für ${day} gefunden.`
     return
   }
 
-  const assigned = hasSchool(klasse, day)
+  const assigned = klasse.schoolDays.includes(day)
 
   await saveChange(async () => {
     if (assigned) {
       await request(
-        `/klasse-ressourcen/${klasse.id}/${room.id}`,
+        `/klasse-ressourcen/${classId}/${room.id}`,
         json('DELETE'),
       )
     } else {
       await request('/klasse-ressourcen', json('POST', {
-        klasse_id: klasse.id,
+        klasse_id: classId,
         ressourcen_id: room.id,
       }))
     }
@@ -539,29 +376,9 @@ async function toggleSchoolDay(
   })
 }
 
-function getUsedRooms(day: Weekday) {
-  return classes.value.filter(
-    klasse => hasSchool(klasse, day),
-  ).length
-}
-
-function getRoomCapacity(day: Weekday) {
-  return roomCapacities.value.find(
-    room => room.day === day,
-  )?.capacity ?? 0
-}
-
-async function changeRoomCapacity(
-  day: Weekday,
-  amount: number,
-) {
-  if (busy.value) return
-
-  const room = roomCapacities.value.find(
-    entry => entry.day === day,
-  )
-
-  if (!room) return
+async function changeCapacity(day: Weekday, amount: number) {
+  const room = rooms.value.find(entry => entry.day === day)
+  if (!room || busy.value) return
 
   await saveChange(async () => {
     await request(
@@ -575,34 +392,15 @@ async function changeRoomCapacity(
   })
 }
 
-function hasRoomConflict(day: Weekday) {
-  return getUsedRooms(day) > getRoomCapacity(day)
-}
-
-function getRoomConflictText(day: Weekday) {
-  const missing =
-    getUsedRooms(day) - getRoomCapacity(day)
-
-  return `${missing} ${missing === 1 ? 'Raum' : 'Räume'} zu wenig`
-}
-
-// --------------------------------------------------
-// Konfliktregeln
-// --------------------------------------------------
-
-async function addRule() {
+async function addRule(otherId: number) {
   const klasse = selectedClass.value
-  const otherId = selectedRuleClassId.value
-
-  if (!klasse || otherId === null || busy.value) return
+  if (!klasse || busy.value) return
 
   await saveChange(async () => {
     await request('/regeln', json('POST', {
       klasse_a_id: klasse.id,
       klasse_b_id: otherId,
     }))
-
-    selectedRuleClassId.value = null
   }, message => {
     apiError.value = message
   })
@@ -616,58 +414,37 @@ async function removeRule(ruleId: number) {
   })
 }
 
-function getOtherClassId(
-  rule: ClassRule,
-  classId: number,
-) {
-  return rule.classAId === classId
-    ? rule.classBId
-    : rule.classAId
+function onLabelSaved(assignment: ClassLabel) {
+  for (const label of labels.value) {
+    if (label.label_id === assignment.label_id) {
+      label.name = assignment.name
+      label.farbe = assignment.farbe
+    }
+  }
+
+  labels.value = labels.value.filter(
+    label =>
+      label.klasse_id !== assignment.klasse_id ||
+      label.label_id !== assignment.label_id,
+  )
+
+  labels.value.push(assignment)
 }
 
-function getOtherClassName(
-  rule: ClassRule,
-  classId: number,
-) {
-  const id = getOtherClassId(rule, classId)
-
-  return classes.value.find(
-    klasse => klasse.id === id,
-  )?.name ?? 'Unbekannt'
+function onLabelColorChanged(change: LabelColorChange) {
+  for (const label of labels.value) {
+    if (label.label_id === change.label_id) {
+      label.farbe = normalizeColor(change.farbe)
+    }
+  }
 }
 
-function getConflictingClasses(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  if (!hasSchool(klasse, day)) return []
-
-  return rules.value
-    .filter(rule =>
-      rule.classAId === klasse.id ||
-      rule.classBId === klasse.id,
-    )
-    .map(rule =>
-      classes.value.find(
-        other =>
-          other.id === getOtherClassId(rule, klasse.id),
-      ),
-    )
-    .filter((other): other is SchoolClass =>
-      other !== undefined && hasSchool(other, day),
-    )
-}
-
-function getConflictText(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  return getConflictingClasses(klasse, day)
-    .map(other =>
-      `${klasse.name} und ${other.name} ` +
-      'dürfen nicht gleichzeitig Schule haben.',
-    )
-    .join('\n')
+function onLabelRemoved(removal: LabelRemoval) {
+  labels.value = labels.value.filter(
+    label =>
+      label.klasse_id !== removal.klasse_id ||
+      label.label_id !== removal.label_id,
+  )
 }
 
 function changeSchoolYear(_direction: number) {
@@ -691,7 +468,6 @@ onMounted(loadData)
           <router-link to="/home" class="nav-link">
             Wochenplan
           </router-link>
-
           <router-link to="/lehrgang" class="nav-link">
             Lehrgänge
           </router-link>
@@ -711,11 +487,10 @@ onMounted(loadData)
         Daten werden geladen...
       </p>
 
-      <p v-if="apiError" class="api-error" role="alert">
+      <p v-if="apiError" class="status-message error" role="alert">
         {{ apiError }}
       </p>
 
-      <!-- Klassenübersicht -->
       <aside class="panel">
         <h2>Klassen</h2>
 
@@ -743,20 +518,19 @@ onMounted(loadData)
           >
 
           <select
-            v-model="selectedLehrgangId"
+            v-model="selectedCourseId"
             :disabled="busy"
             required
           >
             <option :value="null" disabled>
               Lehrgang auswählen
             </option>
-
             <option
-              v-for="lehrgang in lehrgaenge"
-              :key="lehrgang.id"
-              :value="lehrgang.id"
+              v-for="course in courses"
+              :key="course.id"
+              :value="course.id"
             >
-              {{ lehrgang.bezeichnung }}
+              {{ course.bezeichnung }}
             </option>
           </select>
 
@@ -776,7 +550,7 @@ onMounted(loadData)
             Abbrechen
           </button>
 
-          <p v-if="classError" class="api-error">
+          <p v-if="classError" class="error" role="alert">
             {{ classError }}
           </p>
         </form>
@@ -784,22 +558,17 @@ onMounted(loadData)
         <input
           v-model="searchQuery"
           type="search"
+          class="search-input"
           placeholder="Klassen suchen"
           aria-label="Klassen suchen"
-          class="search-input"
         >
 
         <ul class="item-list">
-          <li
-            v-for="klasse in filteredClasses"
-            :key="klasse.id"
-          >
+          <li v-for="klasse in filteredClasses" :key="klasse.id">
             <button
               type="button"
               class="list-button"
-              :class="{
-                selected: selectedClassId === klasse.id,
-              }"
+              :class="{ selected: selectedClassId === klasse.id }"
               :disabled="busy"
               @click="selectClass(klasse.id)"
             >
@@ -813,293 +582,41 @@ onMounted(loadData)
         </p>
       </aside>
 
-      <!-- Wochenplan -->
-      <section class="panel">
-        <div class="section-heading">
-          <h2>Wochenansicht</h2>
+      <WeeklySchedule
+        class="panel"
+        :classes="classes"
+        :rules="rules"
+        :rooms="rooms"
+        :labels="labels"
+        :selected-class-id="selectedClassId"
+        :school-year="schoolYear"
+        :busy="busy"
+        @toggle-day="toggleSchoolDay"
+        @change-capacity="changeCapacity"
+        @change-year="changeSchoolYear"
+      />
 
-          <div class="year-navigation">
-            <button
-              type="button"
-              :disabled="busy"
-              aria-label="Vorheriges Schuljahr"
-              @click="changeSchoolYear(-1)"
-            >
-              ←
-            </button>
-
-            <strong>{{ schoolYearLabel }}</strong>
-
-            <button
-              type="button"
-              :disabled="busy"
-              aria-label="Nächstes Schuljahr"
-              @click="changeSchoolYear(1)"
-            >
-              →
-            </button>
-          </div>
-        </div>
-
-        <div class="table-wrapper">
-          <table>
-            <thead>
-            <tr>
-              <th scope="col">Klasse</th>
-
-              <th
-                v-for="day in weekdays"
-                :key="day"
-                scope="col"
-              >
-                {{ day }}
-              </th>
-            </tr>
-            </thead>
-
-            <tbody>
-            <tr
-              v-for="klasse in classes"
-              :key="klasse.id"
-            >
-              <th
-                scope="row"
-                class="class-name-cell"
-                :class="{
-                    'selected-class-cell':
-                      selectedClassId === klasse.id,
-                  }"
-              >
-                  <span class="table-class-name">
-                    {{ klasse.name }}
-                  </span>
-
-                <div
-                  v-if="
-                      selectedClassId === klasse.id &&
-                      getClassLabels(klasse.id).length
-                    "
-                  class="table-labels"
-                  :aria-label="`Labels von ${klasse.name}`"
-                >
-                    <span
-                      v-for="label in getClassLabels(klasse.id)"
-                      :key="label.label_id"
-                      class="table-label-badge"
-                      :style="badgeStyle(label.farbe)"
-                    >
-                      {{ label.name }}
-                    </span>
-                </div>
-              </th>
-
-              <td
-                v-for="day in weekdays"
-                :key="day"
-              >
-                <button
-                  type="button"
-                  class="school-day-button"
-                  :class="{
-                      active: hasSchool(klasse, day),
-                    }"
-                  :disabled="busy"
-                  @click="toggleSchoolDay(klasse, day)"
-                >
-                  {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
-
-                  <span
-                    v-if="
-                        getConflictingClasses(klasse, day).length
-                      "
-                    class="conflict"
-                    :title="getConflictText(klasse, day)"
-                  >
-                      ⚠ Konflikt
-                    </span>
-                </button>
-              </td>
-            </tr>
-            </tbody>
-
-            <tfoot>
-            <tr>
-              <th scope="row">Räume</th>
-
-              <td
-                v-for="day in weekdays"
-                :key="day"
-              >
-                <div class="room-controls">
-                    <span>
-                      {{ getUsedRooms(day) }} /
-                      {{ getRoomCapacity(day) }}
-                    </span>
-
-                  <span
-                    v-if="hasRoomConflict(day)"
-                    class="conflict"
-                    :title="getRoomConflictText(day)"
-                  >
-                      ⚠
-                    </span>
-
-                  <div>
-                    <button
-                      type="button"
-                      :disabled="busy"
-                      :aria-label="`${day}: Raumanzahl erhöhen`"
-                      @click="changeRoomCapacity(day, 1)"
-                    >
-                      ▲
-                    </button>
-
-                    <button
-                      type="button"
-                      :disabled="
-                          busy || getRoomCapacity(day) === 0
-                        "
-                      :aria-label="`${day}: Raumanzahl verringern`"
-                      @click="changeRoomCapacity(day, -1)"
-                    >
-                      ▼
-                    </button>
-                  </div>
-                </div>
-              </td>
-            </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-
-      <!-- Klasse bearbeiten -->
-      <aside class="panel">
-        <h2>Klasse bearbeiten</h2>
-
-        <div v-if="selectedClass">
-          <h3>{{ selectedClass.name }}</h3>
-
-          <form
-            class="form-stack"
-            @submit.prevent="renameClass"
-          >
-            <label for="class-name">
-              Klassenname
-            </label>
-
-            <input
-              id="class-name"
-              v-model="editedClassName"
-              type="text"
-              maxlength="50"
-              :disabled="busy"
-              required
-            >
-
-            <button
-              type="submit"
-              class="primary-button"
-              :disabled="busy"
-            >
-              Namen speichern
-            </button>
-
-            <p v-if="editClassError" class="api-error">
-              {{ editClassError }}
-            </p>
-          </form>
-
-          <!-- Ausgelagerte Label-Verwaltung -->
-          <ClassLabels
-            :key="selectedClass.id"
-            :class-id="selectedClass.id"
-            :labels="selectedClassLabels"
-            :loading="labelsLoading"
-            :ready="labelsLoaded"
-            :load-error="labelLoadError"
-            :disabled="loading || saving"
-            @reload="loadLabels"
-            @busy-change="labelSaving = $event"
-            @saved="onLabelSaved"
-            @color-changed="onLabelColorChanged"
-            @removed="onLabelRemoved"
-          />
-
-          <h3>Regeln</h3>
-
-          <form
-            class="form-stack"
-            @submit.prevent="addRule"
-          >
-            <label for="rule-class">
-              Darf nicht am gleichen Tag wie:
-            </label>
-
-            <select
-              id="rule-class"
-              v-model="selectedRuleClassId"
-              :disabled="busy"
-            >
-              <option :value="null">
-                Klasse auswählen
-              </option>
-
-              <option
-                v-for="klasse in availableRuleClasses"
-                :key="klasse.id"
-                :value="klasse.id"
-              >
-                {{ klasse.name }}
-              </option>
-            </select>
-
-            <button
-              type="submit"
-              :disabled="
-                busy || selectedRuleClassId === null
-              "
-            >
-              Regel hinzufügen
-            </button>
-          </form>
-
-          <ul class="rule-list">
-            <li
-              v-for="rule in selectedClassRules"
-              :key="rule.id"
-            >
-              <span>
-                {{
-                  getOtherClassName(
-                    rule,
-                    selectedClass.id,
-                  )
-                }}
-              </span>
-
-              <button
-                type="button"
-                :disabled="busy"
-                @click="removeRule(rule.id)"
-              >
-                Entfernen
-              </button>
-            </li>
-          </ul>
-
-          <button
-            type="button"
-            class="danger-button"
-            :disabled="busy"
-            @click="deleteClass"
-          >
-            Klasse löschen
-          </button>
-        </div>
-
-        <p v-else>Wähle eine Klasse aus.</p>
-      </aside>
+      <ClassEditor
+        class="panel class-editor"
+        :school-class="selectedClass"
+        :classes="classes"
+        :rules="rules"
+        :labels="selectedLabels"
+        :busy="busy"
+        :error="editError"
+        :labels-loading="labelsLoading"
+        :labels-ready="labelsReady"
+        :label-load-error="labelLoadError"
+        @rename="renameClass"
+        @delete="deleteClass"
+        @add-rule="addRule"
+        @remove-rule="removeRule"
+        @reload-labels="loadLabels"
+        @label-busy="labelSaving = $event"
+        @label-saved="onLabelSaved"
+        @label-color-changed="onLabelColorChanged"
+        @label-removed="onLabelRemoved"
+      />
     </main>
 
     <Footer />
@@ -1208,14 +725,9 @@ onMounted(loadData)
   box-shadow: 0 5px 22px rgba(15, 23, 42, 0.04);
 }
 
-.panel h2 {
+h2 {
   margin-top: 0;
   font-size: 20px;
-}
-
-.panel h3 {
-  margin-top: 24px;
-  font-size: 16px;
 }
 
 button {
@@ -1226,11 +738,6 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-button:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 3px;
 }
 
 input,
@@ -1247,7 +754,13 @@ input:focus,
 select:focus {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
-  border-color: #2563eb;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
 }
 
 .primary-button {
@@ -1259,23 +772,11 @@ select:focus {
   font-weight: 600;
 }
 
-.primary-button:hover:not(:disabled) {
-  background: #1d4ed8;
-}
-
-.form-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 16px 0;
-}
-
 .search-input {
   margin-top: 18px;
 }
 
-.item-list,
-.rule-list {
+.item-list {
   list-style: none;
   padding: 0;
 }
@@ -1299,149 +800,14 @@ select:focus {
   color: #1d4ed8;
 }
 
-.rule-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.year-navigation {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.year-navigation button,
-.room-controls button {
-  padding: 5px 9px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: white;
-}
-
-.table-wrapper {
-  overflow-x: auto;
-  margin-top: 18px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-th,
-td {
-  padding: 12px 8px;
-  border: 1px solid #e2e8f0;
-  text-align: center;
-}
-
-thead th {
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-tbody th,
-tfoot th {
-  background: #f8fafc;
-}
-
-.class-name-cell {
-  min-width: 110px;
-  max-width: 190px;
-  vertical-align: middle;
-}
-
-.table-class-name {
-  display: block;
-}
-
-.selected-class-cell {
-  box-shadow: inset 3px 0 0 #2563eb;
-}
-
-.table-labels {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 5px;
-  margin-top: 9px;
-}
-
-.table-label-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 4px 8px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.school-day-button {
-  width: 100%;
-  padding: 9px 6px;
-  background: #f8fafc;
-  color: #475569;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
-}
-
-.school-day-button.active {
-  background: #dbeafe;
-  color: #1d4ed8;
-  border-color: #93c5fd;
-}
-
-.room-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.conflict,
-.api-error {
-  color: #dc2626;
-}
-
-.conflict {
-  display: block;
-  margin-top: 5px;
-  font-size: 12px;
-}
-
-.status-message,
-.api-error {
+.status-message {
   grid-column: 1 / -1;
   margin: 0;
 }
 
-.api-error {
+.error {
+  color: #dc2626;
   overflow-wrap: anywhere;
-}
-
-.danger-button {
-  padding: 10px 14px;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fef2f2;
-  color: #b91c1c;
 }
 
 @media (max-width: 1100px) {
@@ -1449,7 +815,7 @@ tfoot th {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .page-main > aside:last-child {
+  .class-editor {
     grid-column: 1 / -1;
   }
 }
@@ -1478,7 +844,7 @@ tfoot th {
     padding: 16px 18px 32px;
   }
 
-  .page-main > aside:last-child {
+  .class-editor {
     grid-column: auto;
   }
 }
