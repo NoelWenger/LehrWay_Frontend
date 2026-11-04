@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
+import ClassLabels from '@/components/ClassLabels.vue'
 
 type Weekday =
   | 'Montag'
@@ -58,11 +59,21 @@ interface DBLehrgang {
   bezeichnung: string
 }
 
-interface DBClassLabel {
+interface ClassLabel {
   klasse_id: number
   label_id: number
   name: string
   farbe: string
+}
+
+interface LabelColorChange {
+  label_id: number
+  farbe: string
+}
+
+interface LabelRemoval {
+  klasse_id: number
+  label_id: number
 }
 
 const weekdays: Weekday[] = [
@@ -72,19 +83,6 @@ const weekdays: Weekday[] = [
   'Donnerstag',
   'Freitag',
 ]
-
-const labelColors = [
-  { name: 'Blau', value: '#0d6efd' },
-  { name: 'Grau', value: '#6c757d' },
-  { name: 'Grün', value: '#198754' },
-  { name: 'Rot', value: '#dc3545' },
-  { name: 'Gelb', value: '#ffc107' },
-  { name: 'Türkis', value: '#0dcaf0' },
-  { name: 'Hell', value: '#f8f9fa' },
-  { name: 'Dunkel', value: '#212529' },
-]
-
-const defaultLabelColor = '#0d6efd'
 
 const currentYear = ref(new Date().getFullYear())
 const classes = ref<SchoolClass[]>([])
@@ -100,32 +98,34 @@ const selectedLehrgangId = ref<number | null>(null)
 const showCreateClass = ref(false)
 const newClassName = ref('')
 const editedClassName = ref('')
+
 const classError = ref('')
 const editClassError = ref('')
 const apiError = ref('')
 const loading = ref(false)
+const saving = ref(false)
 
-// Labels
-const classLabels = ref<DBClassLabel[]>([])
-const newLabelName = ref('')
-const newLabelColor = ref(defaultLabelColor)
-const labelError = ref('')
-const labelLoadError = ref('')
+const classLabels = ref<ClassLabel[]>([])
 const labelsLoading = ref(false)
 const labelsLoaded = ref(false)
+const labelLoadError = ref('')
 const labelSaving = ref(false)
+
+const busy = computed(() =>
+  loading.value || saving.value || labelSaving.value,
+)
 
 const schoolYearLabel = computed(() =>
   `${currentYear.value}/${String(currentYear.value + 1).slice(-2)}`,
 )
 
-const filteredClasses = computed(() =>
-  classes.value.filter(klasse =>
-    klasse.name.toLowerCase().includes(
-      searchQuery.value.toLowerCase(),
-    ),
-  ),
-)
+const filteredClasses = computed(() => {
+  const search = searchQuery.value.trim().toLowerCase()
+
+  return classes.value.filter(klasse =>
+    klasse.name.toLowerCase().includes(search),
+  )
+})
 
 const selectedClass = computed(() =>
   classes.value.find(
@@ -154,30 +154,19 @@ const selectedClassLabels = computed(() =>
   getClassLabels(selectedClassId.value),
 )
 
-const labelsBusy = computed(() =>
-  loading.value ||
-  labelsLoading.value ||
-  labelSaving.value,
-)
-
 function getError(error: unknown): string {
   return error instanceof Error
     ? error.message
     : 'Ein unbekannter Fehler ist aufgetreten.'
 }
 
-// --------------------------------------------------
-// Farben und Label-Darstellung
-// --------------------------------------------------
-
 function normalizeColor(value: unknown): string {
   return typeof value === 'string' &&
   /^#[0-9a-fA-F]{6}$/.test(value)
     ? value.toLowerCase()
-    : defaultLabelColor
+    : '#0d6efd'
 }
 
-// Je nach Hintergrund schwarze oder weiße Schrift wählen.
 function getLabelTextColor(color: string): string {
   const hex = normalizeColor(color).slice(1)
 
@@ -193,14 +182,10 @@ function getLabelTextColor(color: string): string {
       : ((channel + 0.055) / 1.055) ** 2.4
   })
 
-  const red = channels[0] ?? 0
-  const green = channels[1] ?? 0
-  const blue = channels[2] ?? 0
-
   const luminance =
-    0.2126 * red +
-    0.7152 * green +
-    0.0722 * blue
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
 
   return luminance > 0.179 ? '#000000' : '#ffffff'
 }
@@ -214,6 +199,10 @@ function badgeStyle(color: string) {
   }
 }
 
+// --------------------------------------------------
+// Labels laden und Ereignisse der Komponente übernehmen
+// --------------------------------------------------
+
 function getClassLabels(classId: number | null) {
   if (classId === null) return []
 
@@ -222,34 +211,6 @@ function getClassLabels(classId: number | null) {
   )
 }
 
-function normalizeLabel(row: DBClassLabel): DBClassLabel {
-  const classId = Number(row.klasse_id)
-  const labelId = Number(row.label_id)
-
-  if (
-    !Number.isSafeInteger(classId) ||
-    classId <= 0 ||
-    !Number.isSafeInteger(labelId) ||
-    labelId <= 0 ||
-    typeof row.name !== 'string'
-  ) {
-    throw new Error(
-      'Die API hat ungültige Label-Daten zurückgegeben.',
-    )
-  }
-
-  return {
-    klasse_id: classId,
-    label_id: labelId,
-    name: row.name,
-    farbe: normalizeColor(row.farbe),
-  }
-}
-
-// --------------------------------------------------
-// Labels unabhängig laden
-// --------------------------------------------------
-
 async function loadLabels() {
   if (labelsLoading.value) return
 
@@ -257,22 +218,34 @@ async function loadLabels() {
   labelLoadError.value = ''
 
   try {
-    const rows = await request<DBClassLabel[]>(
-      '/klasse-labels',
-    )
+    const rows = await request<ClassLabel[]>('/klasse-labels')
 
     if (!Array.isArray(rows)) {
-      throw new Error(
-        'Die API hat keine Label-Liste zurückgegeben.',
-      )
+      throw new Error('Die API hat keine Label-Liste zurückgegeben.')
     }
 
-    const normalized = rows.map(normalizeLabel)
-    const uniqueLabels = new Map<string, DBClassLabel>()
+    const uniqueLabels = new Map<string, ClassLabel>()
 
-    for (const label of normalized) {
-      const key = `${label.klasse_id}:${label.label_id}`
-      uniqueLabels.set(key, label)
+    for (const row of rows) {
+      const classId = Number(row.klasse_id)
+      const labelId = Number(row.label_id)
+
+      if (
+        !Number.isSafeInteger(classId) ||
+        classId <= 0 ||
+        !Number.isSafeInteger(labelId) ||
+        labelId <= 0 ||
+        typeof row.name !== 'string'
+      ) {
+        throw new Error('Die API hat ungültige Label-Daten zurückgegeben.')
+      }
+
+      uniqueLabels.set(`${classId}:${labelId}`, {
+        klasse_id: classId,
+        label_id: labelId,
+        name: row.name,
+        farbe: normalizeColor(row.farbe),
+      })
     }
 
     classLabels.value = [...uniqueLabels.values()]
@@ -283,6 +256,40 @@ async function loadLabels() {
   } finally {
     labelsLoading.value = false
   }
+}
+
+function onLabelSaved(assignment: ClassLabel) {
+  // Bereits geladene Kopien desselben gemeinsamen Labels aktualisieren.
+  for (const label of classLabels.value) {
+    if (label.label_id === assignment.label_id) {
+      label.name = assignment.name
+      label.farbe = assignment.farbe
+    }
+  }
+
+  classLabels.value = classLabels.value.filter(
+    label =>
+      label.klasse_id !== assignment.klasse_id ||
+      label.label_id !== assignment.label_id,
+  )
+
+  classLabels.value.push(assignment)
+}
+
+function onLabelColorChanged(change: LabelColorChange) {
+  for (const label of classLabels.value) {
+    if (label.label_id === change.label_id) {
+      label.farbe = normalizeColor(change.farbe)
+    }
+  }
+}
+
+function onLabelRemoved(removal: LabelRemoval) {
+  classLabels.value = classLabels.value.filter(
+    label =>
+      label.klasse_id !== removal.klasse_id ||
+      label.label_id !== removal.label_id,
+  )
 }
 
 // --------------------------------------------------
@@ -353,7 +360,6 @@ async function loadData() {
       )
     ) {
       selectedClassId.value = null
-      resetLabelForm()
     }
   } catch (error) {
     apiError.value = getError(error)
@@ -367,34 +373,49 @@ async function loadData() {
   }
 }
 
-function resetLabelForm() {
-  newLabelName.value = ''
-  newLabelColor.value = defaultLabelColor
-  labelError.value = ''
-}
-
 function selectClass(id: number) {
-  if (labelSaving.value) return
+  if (busy.value) return
 
   selectedClassId.value = id
   editedClassName.value =
-    classes.value.find(klasse => klasse.id === id)?.name ?? ''
+    selectedClass.value?.name ?? ''
 
   selectedRuleClassId.value = null
   editClassError.value = ''
-  resetLabelForm()
+}
+
+async function saveChange(
+  operation: () => Promise<void>,
+  setError: (message: string) => void,
+) {
+  if (busy.value) return
+
+  saving.value = true
+  setError('')
+
+  try {
+    await operation()
+    await loadData()
+  } catch (error) {
+    setError(getError(error))
+  } finally {
+    saving.value = false
+  }
 }
 
 // --------------------------------------------------
-// Klassen erstellen und bearbeiten
+// Klassen verwalten
 // --------------------------------------------------
 
 async function createClass() {
+  if (busy.value) return
+
   const name = newClassName.value.trim()
   classError.value = ''
 
-  if (!name) {
-    classError.value = 'Bitte einen Klassennamen eingeben.'
+  if (!name || Array.from(name).length > 50) {
+    classError.value =
+      'Bitte einen Klassennamen mit 1 bis 50 Zeichen eingeben.'
     return
   }
 
@@ -403,24 +424,26 @@ async function createClass() {
     return
   }
 
-  try {
+  const courseId = selectedLehrgangId.value
+
+  await saveChange(async () => {
     await request('/klassen', json('POST', {
       bezeichnung: name,
-      lehrgang_id: selectedLehrgangId.value,
+      lehrgang_id: courseId,
       anzahl_schultage_woche: 0,
     }))
 
     newClassName.value = ''
     selectedLehrgangId.value = null
     showCreateClass.value = false
-
-    await loadData()
-  } catch (error) {
-    classError.value = getError(error)
-  }
+  }, message => {
+    classError.value = message
+  })
 }
 
 function cancelCreateClass() {
+  if (busy.value) return
+
   showCreateClass.value = false
   newClassName.value = ''
   selectedLehrgangId.value = null
@@ -428,65 +451,57 @@ function cancelCreateClass() {
 }
 
 async function renameClass() {
-  if (!selectedClass.value) return
+  const klasse = selectedClass.value
+  if (!klasse || busy.value) return
 
   const name = editedClassName.value.trim()
+  editClassError.value = ''
 
-  if (!name) {
+  if (!name || Array.from(name).length > 50) {
     editClassError.value =
-      'Der Klassenname darf nicht leer sein.'
+      'Bitte einen Klassennamen mit 1 bis 50 Zeichen eingeben.'
     return
   }
 
-  try {
+  await saveChange(async () => {
     await request(
-      `/klassen/${selectedClass.value.id}`,
+      `/klassen/${klasse.id}`,
       json('PUT', { bezeichnung: name }),
     )
 
-    editClassError.value = ''
-    await loadData()
-  } catch (error) {
-    editClassError.value = getError(error)
-  }
+    klasse.name = name
+  }, message => {
+    editClassError.value = message
+  })
 }
 
 async function deleteClass() {
-  if (!selectedClass.value || labelSaving.value) return
+  const klasse = selectedClass.value
+  if (!klasse || busy.value) return
 
   if (!confirm('Möchtest du diese Klasse wirklich löschen?')) {
     return
   }
 
-  const classId = selectedClass.value.id
-
-  try {
-    await request(
-      `/klassen/${classId}`,
-      json('DELETE'),
-    )
+  await saveChange(async () => {
+    await request(`/klassen/${klasse.id}`, json('DELETE'))
 
     classLabels.value = classLabels.value.filter(
-      label => label.klasse_id !== classId,
+      label => label.klasse_id !== klasse.id,
     )
 
     selectedClassId.value = null
-    resetLabelForm()
-
-    await loadData()
-  } catch (error) {
-    apiError.value = getError(error)
-  }
+    selectedRuleClassId.value = null
+  }, message => {
+    apiError.value = message
+  })
 }
 
 // --------------------------------------------------
 // Schultage und Räume
 // --------------------------------------------------
 
-function hasSchool(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
+function hasSchool(klasse: SchoolClass, day: Weekday) {
   return klasse.schoolDays.includes(day)
 }
 
@@ -494,6 +509,8 @@ async function toggleSchoolDay(
   klasse: SchoolClass,
   day: Weekday,
 ) {
+  if (busy.value) return
+
   const room = roomCapacities.value.find(
     entry => entry.day === day,
   )
@@ -503,8 +520,10 @@ async function toggleSchoolDay(
     return
   }
 
-  try {
-    if (hasSchool(klasse, day)) {
+  const assigned = hasSchool(klasse, day)
+
+  await saveChange(async () => {
+    if (assigned) {
       await request(
         `/klasse-ressourcen/${klasse.id}/${room.id}`,
         json('DELETE'),
@@ -515,11 +534,9 @@ async function toggleSchoolDay(
         ressourcen_id: room.id,
       }))
     }
-
-    await loadData()
-  } catch (error) {
-    apiError.value = getError(error)
-  }
+  }, message => {
+    apiError.value = message
+  })
 }
 
 function getUsedRooms(day: Weekday) {
@@ -538,24 +555,24 @@ async function changeRoomCapacity(
   day: Weekday,
   amount: number,
 ) {
+  if (busy.value) return
+
   const room = roomCapacities.value.find(
     entry => entry.day === day,
   )
 
   if (!room) return
 
-  try {
+  await saveChange(async () => {
     await request(
       `/ressourcen/${room.id}`,
       json('PUT', {
         anzahl_raeume: Math.max(0, room.capacity + amount),
       }),
     )
-
-    await loadData()
-  } catch (error) {
-    apiError.value = getError(error)
-  }
+  }, message => {
+    apiError.value = message
+  })
 }
 
 function hasRoomConflict(day: Weekday) {
@@ -570,41 +587,33 @@ function getRoomConflictText(day: Weekday) {
 }
 
 // --------------------------------------------------
-// Klassenregeln
+// Konfliktregeln
 // --------------------------------------------------
 
 async function addRule() {
-  if (
-    !selectedClass.value ||
-    selectedRuleClassId.value === null
-  ) {
-    return
-  }
+  const klasse = selectedClass.value
+  const otherId = selectedRuleClassId.value
 
-  try {
+  if (!klasse || otherId === null || busy.value) return
+
+  await saveChange(async () => {
     await request('/regeln', json('POST', {
-      klasse_a_id: selectedClass.value.id,
-      klasse_b_id: selectedRuleClassId.value,
+      klasse_a_id: klasse.id,
+      klasse_b_id: otherId,
     }))
 
     selectedRuleClassId.value = null
-    await loadData()
-  } catch (error) {
-    apiError.value = getError(error)
-  }
+  }, message => {
+    apiError.value = message
+  })
 }
 
 async function removeRule(ruleId: number) {
-  try {
-    await request(
-      `/regeln/${ruleId}`,
-      json('DELETE'),
-    )
-
-    await loadData()
-  } catch (error) {
-    apiError.value = getError(error)
-  }
+  await saveChange(async () => {
+    await request(`/regeln/${ruleId}`, json('DELETE'))
+  }, message => {
+    apiError.value = message
+  })
 }
 
 function getOtherClassId(
@@ -649,13 +658,6 @@ function getConflictingClasses(
     )
 }
 
-function hasConflict(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  return getConflictingClasses(klasse, day).length > 0
-}
-
 function getConflictText(
   klasse: SchoolClass,
   day: Weekday,
@@ -668,141 +670,6 @@ function getConflictText(
     .join('\n')
 }
 
-// --------------------------------------------------
-// Labels hinzufügen, einfärben und entfernen
-// --------------------------------------------------
-
-async function addLabel() {
-  const classId = selectedClassId.value
-  const name = newLabelName.value.trim()
-
-  if (
-    classId === null ||
-    labelsBusy.value ||
-    !labelsLoaded.value
-  ) {
-    return
-  }
-
-  labelError.value = ''
-
-  if (!name || Array.from(name).length > 50) {
-    labelError.value =
-      'Bitte ein Label mit 1 bis 50 Zeichen eingeben.'
-    return
-  }
-
-  if (
-    selectedClassLabels.value.some(
-      label =>
-        label.name.trim().toLowerCase() === name.toLowerCase(),
-    )
-  ) {
-    labelError.value =
-      'Diese Klasse hat dieses Label bereits. ' +
-      'Du kannst seine Farbe direkt am Label ändern.'
-    return
-  }
-
-  labelSaving.value = true
-
-  try {
-    const result = await request<DBClassLabel>(
-      `/klassen/${classId}/labels`,
-      json('POST', {
-        name,
-        farbe: normalizeColor(newLabelColor.value),
-      }),
-    )
-
-    const assignment = normalizeLabel(result)
-
-    classLabels.value = classLabels.value.filter(
-      label =>
-        label.klasse_id !== assignment.klasse_id ||
-        label.label_id !== assignment.label_id,
-    )
-
-    classLabels.value.push(assignment)
-
-    newLabelName.value = ''
-  } catch (error) {
-    labelError.value = getError(error)
-  } finally {
-    labelSaving.value = false
-  }
-}
-
-async function changeLabelColor(
-  label: DBClassLabel,
-  event: Event,
-) {
-  const input = event.target as HTMLInputElement
-
-  if (labelsBusy.value || !labelsLoaded.value) {
-    input.value = label.farbe
-    return
-  }
-
-  const color = normalizeColor(input.value)
-
-  if (color === label.farbe) return
-
-  labelError.value = ''
-  labelSaving.value = true
-
-  try {
-    const result = await request<{
-      klasse_id: number
-      label_id: number
-      farbe: string
-    }>(
-      `/klassen/${label.klasse_id}/labels/${label.label_id}/farbe`,
-      json('PATCH', { farbe: color }),
-    )
-
-    label.farbe = normalizeColor(result.farbe)
-  } catch (error) {
-    input.value = label.farbe
-    labelError.value = getError(error)
-  } finally {
-    labelSaving.value = false
-  }
-}
-
-async function removeLabel(labelId: number) {
-  const classId = selectedClassId.value
-
-  if (
-    classId === null ||
-    labelsBusy.value ||
-    !labelsLoaded.value
-  ) {
-    return
-  }
-
-  labelError.value = ''
-  labelSaving.value = true
-
-  try {
-    await request(
-      `/klassen/${classId}/labels/${labelId}`,
-      json('DELETE'),
-    )
-
-    classLabels.value = classLabels.value.filter(
-      label =>
-        label.klasse_id !== classId ||
-        label.label_id !== labelId,
-    )
-  } catch (error) {
-    labelError.value = getError(error)
-  } finally {
-    labelSaving.value = false
-  }
-}
-
-// Schuljahre sind noch nicht in der Datenbank zugeordnet.
 function changeSchoolYear(_direction: number) {
   apiError.value =
     'Der Schuljahreswechsel benötigt noch eine ' +
@@ -855,6 +722,7 @@ onMounted(loadData)
         <button
           type="button"
           class="primary-button"
+          :disabled="busy"
           @click="showCreateClass = true"
         >
           + Klasse erstellen
@@ -870,11 +738,16 @@ onMounted(loadData)
             type="text"
             placeholder="Klassenname"
             maxlength="50"
+            :disabled="busy"
             required
           >
 
-          <select v-model="selectedLehrgangId" required>
-            <option :value="null">
+          <select
+            v-model="selectedLehrgangId"
+            :disabled="busy"
+            required
+          >
+            <option :value="null" disabled>
               Lehrgang auswählen
             </option>
 
@@ -887,12 +760,17 @@ onMounted(loadData)
             </option>
           </select>
 
-          <button type="submit" class="primary-button">
+          <button
+            type="submit"
+            class="primary-button"
+            :disabled="busy"
+          >
             Erstellen
           </button>
 
           <button
             type="button"
+            :disabled="busy"
             @click="cancelCreateClass"
           >
             Abbrechen
@@ -922,7 +800,7 @@ onMounted(loadData)
               :class="{
                 selected: selectedClassId === klasse.id,
               }"
-              :disabled="labelSaving"
+              :disabled="busy"
               @click="selectClass(klasse.id)"
             >
               {{ klasse.name }}
@@ -943,6 +821,7 @@ onMounted(loadData)
           <div class="year-navigation">
             <button
               type="button"
+              :disabled="busy"
               aria-label="Vorheriges Schuljahr"
               @click="changeSchoolYear(-1)"
             >
@@ -953,6 +832,7 @@ onMounted(loadData)
 
             <button
               type="button"
+              :disabled="busy"
               aria-label="Nächstes Schuljahr"
               @click="changeSchoolYear(1)"
             >
@@ -994,7 +874,6 @@ onMounted(loadData)
                     {{ klasse.name }}
                   </span>
 
-                <!-- Labels der ausgewählten Klasse -->
                 <div
                   v-if="
                       selectedClassId === klasse.id &&
@@ -1006,7 +885,7 @@ onMounted(loadData)
                     <span
                       v-for="label in getClassLabels(klasse.id)"
                       :key="label.label_id"
-                      class="label-badge table-label-badge"
+                      class="table-label-badge"
                       :style="badgeStyle(label.farbe)"
                     >
                       {{ label.name }}
@@ -1024,16 +903,15 @@ onMounted(loadData)
                   :class="{
                       active: hasSchool(klasse, day),
                     }"
+                  :disabled="busy"
                   @click="toggleSchoolDay(klasse, day)"
                 >
-                  {{
-                    hasSchool(klasse, day)
-                      ? 'Schule'
-                      : '–'
-                  }}
+                  {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
 
                   <span
-                    v-if="hasConflict(klasse, day)"
+                    v-if="
+                        getConflictingClasses(klasse, day).length
+                      "
                     class="conflict"
                     :title="getConflictText(klasse, day)"
                   >
@@ -1069,6 +947,7 @@ onMounted(loadData)
                   <div>
                     <button
                       type="button"
+                      :disabled="busy"
                       :aria-label="`${day}: Raumanzahl erhöhen`"
                       @click="changeRoomCapacity(day, 1)"
                     >
@@ -1077,6 +956,9 @@ onMounted(loadData)
 
                     <button
                       type="button"
+                      :disabled="
+                          busy || getRoomCapacity(day) === 0
+                        "
                       :aria-label="`${day}: Raumanzahl verringern`"
                       @click="changeRoomCapacity(day, -1)"
                     >
@@ -1111,12 +993,14 @@ onMounted(loadData)
               v-model="editedClassName"
               type="text"
               maxlength="50"
+              :disabled="busy"
               required
             >
 
             <button
               type="submit"
               class="primary-button"
+              :disabled="busy"
             >
               Namen speichern
             </button>
@@ -1126,197 +1010,22 @@ onMounted(loadData)
             </p>
           </form>
 
-          <!-- Labels -->
-          <h3>Labels</h3>
+          <!-- Ausgelagerte Label-Verwaltung -->
+          <ClassLabels
+            :key="selectedClass.id"
+            :class-id="selectedClass.id"
+            :labels="selectedClassLabels"
+            :loading="labelsLoading"
+            :ready="labelsLoaded"
+            :load-error="labelLoadError"
+            :disabled="loading || saving"
+            @reload="loadLabels"
+            @busy-change="labelSaving = $event"
+            @saved="onLabelSaved"
+            @color-changed="onLabelColorChanged"
+            @removed="onLabelRemoved"
+          />
 
-          <p
-            v-if="labelsLoading"
-            class="help-text"
-            role="status"
-          >
-            Labels werden geladen...
-          </p>
-
-          <div
-            v-if="labelLoadError"
-            class="label-load-error"
-          >
-            <p class="api-error" role="alert">
-              Labels konnten nicht geladen werden:
-              {{ labelLoadError }}
-            </p>
-
-            <button
-              type="button"
-              :disabled="labelsBusy"
-              @click="loadLabels"
-            >
-              Labels erneut laden
-            </button>
-          </div>
-
-          <ul class="class-labels">
-            <li
-              v-for="label in selectedClassLabels"
-              :key="label.label_id"
-              class="label-badge editable-label"
-              :style="badgeStyle(label.farbe)"
-            >
-              <span class="label-name">
-                {{ label.name }}
-              </span>
-
-              <input
-                class="badge-color-input"
-                type="color"
-                :value="label.farbe"
-                :disabled="labelsBusy || !labelsLoaded"
-                :aria-label="`Farbe für ${label.name} ändern`"
-                title="Labelfarbe ändern"
-                @change="changeLabelColor(label, $event)"
-              >
-
-              <button
-                type="button"
-                class="remove-label-button"
-                :disabled="labelsBusy || !labelsLoaded"
-                :aria-label="
-                  `Label ${label.name} von dieser Klasse entfernen`
-                "
-                @click="removeLabel(label.label_id)"
-              >
-                ×
-              </button>
-            </li>
-          </ul>
-
-          <p
-            v-if="
-              labelsLoaded &&
-              !labelsLoading &&
-              selectedClassLabels.length === 0
-            "
-            class="help-text"
-          >
-            Noch keine Labels vorhanden.
-          </p>
-
-          <p
-            v-if="selectedClassLabels.length"
-            class="help-text label-help"
-          >
-            Über das kleine Farbfeld kannst du die Farbe ändern.
-          </p>
-
-          <form
-            class="form-stack label-form"
-            @submit.prevent="addLabel"
-          >
-            <label for="new-class-label">
-              Neues Stichwort
-            </label>
-
-            <input
-              id="new-class-label"
-              v-model="newLabelName"
-              type="text"
-              placeholder="Zum Beispiel ÜK vorhanden"
-              maxlength="50"
-              :disabled="labelsBusy || !labelsLoaded"
-              required
-            >
-
-            <fieldset
-              class="label-color-fieldset"
-              :disabled="labelsBusy || !labelsLoaded"
-            >
-              <legend>Farbe auswählen</legend>
-
-              <div class="color-palette">
-                <button
-                  v-for="color in labelColors"
-                  :key="color.value"
-                  type="button"
-                  class="color-swatch"
-                  :class="{
-                    'color-swatch-selected':
-                      newLabelColor === color.value,
-                  }"
-                  :style="{
-                    backgroundColor: color.value,
-                    color: getLabelTextColor(color.value),
-                  }"
-                  :aria-label="color.name"
-                  :aria-pressed="newLabelColor === color.value"
-                  :title="color.name"
-                  @click="newLabelColor = color.value"
-                >
-                  <span
-                    v-if="newLabelColor === color.value"
-                    aria-hidden="true"
-                  >
-                    ✓
-                  </span>
-                </button>
-              </div>
-
-              <div class="custom-color-row">
-                <label for="new-label-color">
-                  Eigene Farbe
-                </label>
-
-                <input
-                  id="new-label-color"
-                  v-model="newLabelColor"
-                  type="color"
-                  class="custom-color-input"
-                >
-              </div>
-            </fieldset>
-
-            <div class="label-preview">
-              <span class="preview-caption">
-                Vorschau
-              </span>
-
-              <span
-                class="label-badge"
-                :style="badgeStyle(newLabelColor)"
-              >
-                {{ newLabelName.trim() || 'Dein Label' }}
-              </span>
-            </div>
-
-            <button
-              type="submit"
-              class="primary-button"
-              :disabled="
-                labelsBusy ||
-                !labelsLoaded ||
-                !newLabelName.trim()
-              "
-            >
-              Label hinzufügen
-            </button>
-
-            <p
-              v-if="labelSaving"
-              class="help-text"
-              role="status"
-            >
-              Label wird gespeichert...
-            </p>
-
-            <p
-              v-if="labelError"
-              class="api-error"
-              role="alert"
-            >
-              {{ labelError }}
-            </p>
-          </form>
-
-          <!-- Regeln -->
           <h3>Regeln</h3>
 
           <form
@@ -1330,6 +1039,7 @@ onMounted(loadData)
             <select
               id="rule-class"
               v-model="selectedRuleClassId"
+              :disabled="busy"
             >
               <option :value="null">
                 Klasse auswählen
@@ -1344,7 +1054,12 @@ onMounted(loadData)
               </option>
             </select>
 
-            <button type="submit">
+            <button
+              type="submit"
+              :disabled="
+                busy || selectedRuleClassId === null
+              "
+            >
               Regel hinzufügen
             </button>
           </form>
@@ -1365,6 +1080,7 @@ onMounted(loadData)
 
               <button
                 type="button"
+                :disabled="busy"
                 @click="removeRule(rule.id)"
               >
                 Entfernen
@@ -1375,7 +1091,7 @@ onMounted(loadData)
           <button
             type="button"
             class="danger-button"
-            :disabled="labelSaving"
+            :disabled="busy"
             @click="deleteClass"
           >
             Klasse löschen
@@ -1400,7 +1116,6 @@ onMounted(loadData)
   font-family: Inter, system-ui, Arial, sans-serif;
 }
 
-/* Navbar */
 .site-header {
   background: white;
   border-bottom: 1px solid #e6eaf0;
@@ -1440,7 +1155,6 @@ onMounted(loadData)
   color: #475569;
   text-decoration: none;
   font-weight: 600;
-  transition: 0.2s;
 }
 
 .nav-link:hover {
@@ -1453,7 +1167,6 @@ onMounted(loadData)
   color: white;
 }
 
-/* Seitenlayout */
 .page-intro {
   width: 100%;
   max-width: 1440px;
@@ -1463,14 +1176,14 @@ onMounted(loadData)
 }
 
 .page-intro h1 {
+  margin: 0 0 8px;
   font-size: 36px;
   font-weight: 800;
-  margin: 0 0 8px;
 }
 
 .page-intro p {
-  color: #64748b;
   margin: 0;
+  color: #64748b;
 }
 
 .page-main {
@@ -1501,11 +1214,10 @@ onMounted(loadData)
 }
 
 .panel h3 {
-  font-size: 16px;
   margin-top: 24px;
+  font-size: 16px;
 }
 
-/* Formulare und Buttons */
 button {
   cursor: pointer;
   font-family: inherit;
@@ -1514,6 +1226,11 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
 }
 
 input,
@@ -1533,17 +1250,12 @@ select:focus {
   border-color: #2563eb;
 }
 
-button:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 3px;
-}
-
 .primary-button {
-  background: #2563eb;
-  color: white;
+  padding: 11px 14px;
   border: none;
   border-radius: 8px;
-  padding: 11px 14px;
+  background: #2563eb;
+  color: white;
   font-weight: 600;
 }
 
@@ -1595,11 +1307,10 @@ button:focus-visible {
   margin-bottom: 10px;
 }
 
-/* Wochenplan */
 .section-heading {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
 }
@@ -1668,6 +1379,21 @@ tfoot th {
   margin-top: 9px;
 }
 
+.table-label-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .school-day-button {
   width: 100%;
   padding: 9px 6px;
@@ -1711,196 +1437,13 @@ tfoot th {
 }
 
 .danger-button {
-  color: #b91c1c;
-  background: #fef2f2;
+  padding: 10px 14px;
   border: 1px solid #fecaca;
   border-radius: 8px;
-  padding: 10px 14px;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
-/* Farbige Pill-Labels */
-.help-text {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.label-help {
-  line-height: 1.5;
-}
-
-.label-load-error {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 12px 0;
-}
-
-.class-labels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0;
-  margin: 14px 0;
-  list-style: none;
-}
-
-.label-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 5px 11px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.editable-label {
-  padding-right: 6px;
-}
-
-.label-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.table-label-badge {
-  padding: 4px 8px;
-  font-size: 11px;
-}
-
-.remove-label-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 23px;
-  height: 23px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  font-size: 19px;
-  line-height: 1;
-}
-
-.remove-label-button:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-.badge-color-input {
-  width: 19px;
-  height: 19px;
-  min-width: 19px;
-  flex-shrink: 0;
-  padding: 0;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  background: transparent;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.badge-color-input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.badge-color-input::-webkit-color-swatch {
-  border: none;
-  border-radius: 50%;
-}
-
-.badge-color-input::-moz-color-swatch {
-  border: none;
-  border-radius: 50%;
-}
-
-.badge-color-input:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-/* Farbauswahl */
-.label-color-fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-}
-
-.label-color-fieldset legend {
-  padding: 0 4px;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.color-palette {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  padding: 3px;
-}
-
-.color-swatch {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 27px;
-  height: 27px;
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.16);
-  border-radius: 50%;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.color-swatch-selected {
-  outline: 2px solid #172033;
-  outline-offset: 2px;
-}
-
-.custom-color-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.custom-color-row label {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.custom-color-input {
-  width: 42px;
-  height: 30px;
-  padding: 2px;
-  cursor: pointer;
-}
-
-.label-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  padding: 10px 0;
-}
-
-.preview-caption {
-  color: #64748b;
-  font-size: 12px;
-}
-
-/* Responsive Design */
 @media (max-width: 1100px) {
   .page-main {
     grid-template-columns: 220px minmax(0, 1fr);
