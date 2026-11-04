@@ -308,7 +308,9 @@ function hasRoomConflict(day: Weekday) {
 }
 
 function getRoomConflictText(day: Weekday) {
-  return `${getUsedRooms(day) - getRoomCapacity(day)} Raum/Räume zu wenig`
+  const missing = getUsedRooms(day) - getRoomCapacity(day)
+
+  return `${missing} ${missing === 1 ? 'Raum' : 'Räume'} zu wenig`
 }
 
 // Klassenregeln
