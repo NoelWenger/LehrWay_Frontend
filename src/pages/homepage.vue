@@ -4,7 +4,12 @@ import { request, json } from '../services/lehrway-api'
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
 
-type Weekday = 'Montag' | 'Dienstag' | 'Mittwoch' | 'Donnerstag' | 'Freitag'
+type Weekday =
+  | 'Montag'
+  | 'Dienstag'
+  | 'Mittwoch'
+  | 'Donnerstag'
+  | 'Freitag'
 
 interface SchoolClass {
   id: number
@@ -53,8 +58,18 @@ interface DBLehrgang {
   bezeichnung: string
 }
 
+interface DBClassLabel {
+  klasse_id: number
+  label_id: number
+  name: string
+}
+
 const weekdays: Weekday[] = [
-  'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
 ]
 
 const currentYear = ref(new Date().getFullYear())
@@ -76,34 +91,60 @@ const editClassError = ref('')
 const apiError = ref('')
 const loading = ref(false)
 
+// Labels
+const classLabels = ref<DBClassLabel[]>([])
+const newLabelName = ref('')
+const labelError = ref('')
+const labelLoadError = ref('')
+const labelsLoading = ref(false)
+const labelsLoaded = ref(false)
+const labelSaving = ref(false)
+
 const schoolYearLabel = computed(() =>
-  `${currentYear.value}/${String(currentYear.value + 1).slice(-2)}`
+  `${currentYear.value}/${String(currentYear.value + 1).slice(-2)}`,
 )
 
 const filteredClasses = computed(() =>
   classes.value.filter(klasse =>
-    klasse.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-  )
+    klasse.name.toLowerCase().includes(
+      searchQuery.value.toLowerCase(),
+    ),
+  ),
 )
 
 const selectedClass = computed(() =>
-  classes.value.find(klasse => klasse.id === selectedClassId.value)
+  classes.value.find(
+    klasse => klasse.id === selectedClassId.value,
+  ),
 )
 
 const selectedClassRules = computed(() =>
   rules.value.filter(rule =>
     rule.classAId === selectedClassId.value ||
-    rule.classBId === selectedClassId.value
-  )
+    rule.classBId === selectedClassId.value,
+  ),
 )
 
 const availableRuleClasses = computed(() =>
   classes.value.filter(klasse =>
     klasse.id !== selectedClassId.value &&
     !selectedClassRules.value.some(rule =>
-      rule.classAId === klasse.id || rule.classBId === klasse.id
-    )
-  )
+      rule.classAId === klasse.id ||
+      rule.classBId === klasse.id,
+    ),
+  ),
+)
+
+const selectedClassLabels = computed(() =>
+  classLabels.value.filter(
+    label => label.klasse_id === selectedClassId.value,
+  ),
+)
+
+const labelsBusy = computed(() =>
+  loading.value ||
+  labelsLoading.value ||
+  labelSaving.value,
 )
 
 function getError(error: unknown): string {
@@ -112,27 +153,102 @@ function getError(error: unknown): string {
     : 'Ein unbekannter Fehler ist aufgetreten.'
 }
 
-// Daten laden
+// --------------------------------------------------
+// Labels unabhängig laden
+// --------------------------------------------------
+
+function normalizeLabel(row: DBClassLabel): DBClassLabel {
+  const classId = Number(row.klasse_id)
+  const labelId = Number(row.label_id)
+
+  if (
+    !Number.isSafeInteger(classId) ||
+    classId <= 0 ||
+    !Number.isSafeInteger(labelId) ||
+    labelId <= 0 ||
+    typeof row.name !== 'string'
+  ) {
+    throw new Error('Die API hat ungültige Label-Daten zurückgegeben.')
+  }
+
+  return {
+    klasse_id: classId,
+    label_id: labelId,
+    name: row.name,
+  }
+}
+
+async function loadLabels() {
+  if (labelsLoading.value) return
+
+  labelsLoading.value = true
+  labelLoadError.value = ''
+
+  try {
+    const rows = await request<DBClassLabel[]>('/klasse-labels')
+
+    if (!Array.isArray(rows)) {
+      throw new Error('Die API hat keine Label-Liste zurückgegeben.')
+    }
+
+    const normalized = rows.map(normalizeLabel)
+
+    // Doppelte vorhandene Zuordnungen nur einmal anzeigen.
+    const uniqueLabels = new Map<string, DBClassLabel>()
+
+    for (const label of normalized) {
+      const key = `${label.klasse_id}:${label.label_id}`
+      uniqueLabels.set(key, label)
+    }
+
+    classLabels.value = [...uniqueLabels.values()]
+    labelsLoaded.value = true
+  } catch (error) {
+    labelsLoaded.value = false
+    labelLoadError.value = getError(error)
+
+    // Ein Label-Fehler leert keine Klassen oder Lehrgänge.
+    // Bereits geladene Labels bleiben ebenfalls erhalten.
+  } finally {
+    labelsLoading.value = false
+  }
+}
+
+// --------------------------------------------------
+// Bisherige Daten laden
+// --------------------------------------------------
+
 async function loadData() {
+  if (loading.value) return
+
   loading.value = true
   apiError.value = ''
 
+  // Eigene Fehlerbehandlung: Labels beeinflussen die
+  // übrigen API-Aufrufe nicht.
+  const labelsRequest = loadLabels()
+
   try {
-    const [dbClasses, dbRooms, dbRules, assignments, dbLehrgaenge] =
-      await Promise.all([
-        request<DBClass[]>('/klassen'),
-        request<DBRoom[]>('/ressourcen'),
-        request<DBRule[]>('/regeln'),
-        request<DBAssignment[]>('/klasse-ressourcen'),
-        request<DBLehrgang[]>('/lehrgaenge')
-      ])
+    const [
+      dbClasses,
+      dbRooms,
+      dbRules,
+      assignments,
+      dbLehrgaenge,
+    ] = await Promise.all([
+      request<DBClass[]>('/klassen'),
+      request<DBRoom[]>('/ressourcen'),
+      request<DBRule[]>('/regeln'),
+      request<DBAssignment[]>('/klasse-ressourcen'),
+      request<DBLehrgang[]>('/lehrgaenge'),
+    ])
 
     lehrgaenge.value = dbLehrgaenge
 
     roomCapacities.value = dbRooms.map(room => ({
       id: room.id,
       day: room.wochentag,
-      capacity: room.anzahl_raeume
+      capacity: room.anzahl_raeume,
     }))
 
     classes.value = dbClasses.map(klasse => ({
@@ -140,22 +256,30 @@ async function loadData() {
       name: klasse.bezeichnung,
       lehrgang_id: klasse.lehrgang_id,
       schoolDays: dbRooms
-        .filter(room => assignments.some(assignment =>
-          assignment.klasse_id === klasse.id &&
-          assignment.ressourcen_id === room.id
-        ))
-        .map(room => room.wochentag)
+        .filter(room =>
+          assignments.some(assignment =>
+            assignment.klasse_id === klasse.id &&
+            assignment.ressourcen_id === room.id,
+          ),
+        )
+        .map(room => room.wochentag),
     }))
 
     rules.value = dbRules.map(rule => ({
       id: rule.id,
       classAId: rule.klasse_a_id,
-      classBId: rule.klasse_b_id
+      classBId: rule.klasse_b_id,
     }))
 
-    if (selectedClassId.value !== null &&
-      !classes.value.some(klasse => klasse.id === selectedClassId.value)) {
+    if (
+      selectedClassId.value !== null &&
+      !classes.value.some(
+        klasse => klasse.id === selectedClassId.value,
+      )
+    ) {
       selectedClassId.value = null
+      newLabelName.value = ''
+      labelError.value = ''
     }
   } catch (error) {
     apiError.value = getError(error)
@@ -164,22 +288,29 @@ async function loadData() {
     roomCapacities.value = []
     lehrgaenge.value = []
   } finally {
+    await labelsRequest
     loading.value = false
   }
 }
 
 function selectClass(id: number) {
   selectedClassId.value = id
-  editedClassName.value = classes.value.find(klasse => klasse.id === id)?.name ?? ''
+  editedClassName.value =
+    classes.value.find(klasse => klasse.id === id)?.name ?? ''
+
   selectedRuleClassId.value = null
   editClassError.value = ''
+  newLabelName.value = ''
+  labelError.value = ''
 }
 
+// --------------------------------------------------
 // Klasse erstellen
+// --------------------------------------------------
+
 async function createClass() {
   const name = newClassName.value.trim()
   classError.value = ''
-
 
   if (!name) {
     classError.value = 'Bitte einen Klassennamen eingeben.'
@@ -195,12 +326,13 @@ async function createClass() {
     await request('/klassen', json('POST', {
       bezeichnung: name,
       lehrgang_id: selectedLehrgangId.value,
-      anzahl_schultage_woche: 0
+      anzahl_schultage_woche: 0,
     }))
 
     newClassName.value = ''
     selectedLehrgangId.value = null
     showCreateClass.value = false
+
     await loadData()
   } catch (error) {
     classError.value = getError(error)
@@ -214,11 +346,15 @@ function cancelCreateClass() {
   classError.value = ''
 }
 
+// --------------------------------------------------
 // Klasse umbenennen
+// --------------------------------------------------
+
 async function renameClass() {
   if (!selectedClass.value) return
 
   const name = editedClassName.value.trim()
+
   if (!name) {
     editClassError.value = 'Der Klassenname darf nicht leer sein.'
     return
@@ -227,8 +363,9 @@ async function renameClass() {
   try {
     await request(
       `/klassen/${selectedClass.value.id}`,
-      json('PUT', { bezeichnung: name })
+      json('PUT', { bezeichnung: name }),
     )
+
     editClassError.value = ''
     await loadData()
   } catch (error) {
@@ -236,27 +373,51 @@ async function renameClass() {
   }
 }
 
+// --------------------------------------------------
 // Klasse löschen
+// --------------------------------------------------
+
 async function deleteClass() {
-  if (!selectedClass.value ||
-    !confirm('Möchtest du diese Klasse wirklich löschen?')) return
+  if (!selectedClass.value || labelSaving.value) return
+
+  if (!confirm('Möchtest du diese Klasse wirklich löschen?')) {
+    return
+  }
+
+  const classId = selectedClass.value.id
 
   try {
-    await request(`/klassen/${selectedClass.value.id}`, json('DELETE'))
+    await request(`/klassen/${classId}`, json('DELETE'))
+
+    classLabels.value = classLabels.value.filter(
+      label => label.klasse_id !== classId,
+    )
+
     selectedClassId.value = null
+    newLabelName.value = ''
+    labelError.value = ''
+
     await loadData()
   } catch (error) {
     apiError.value = getError(error)
   }
 }
 
+// --------------------------------------------------
 // Schultage und Räume
+// --------------------------------------------------
+
 function hasSchool(klasse: SchoolClass, day: Weekday) {
   return klasse.schoolDays.includes(day)
 }
 
-async function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
-  const room = roomCapacities.value.find(room => room.day === day)
+async function toggleSchoolDay(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
+  const room = roomCapacities.value.find(
+    room => room.day === day,
+  )
 
   if (!room) {
     apiError.value = `Keine Ressource für ${day} gefunden.`
@@ -267,14 +428,15 @@ async function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
     if (hasSchool(klasse, day)) {
       await request(
         `/klasse-ressourcen/${klasse.id}/${room.id}`,
-        json('DELETE')
+        json('DELETE'),
       )
     } else {
       await request('/klasse-ressourcen', json('POST', {
         klasse_id: klasse.id,
-        ressourcen_id: room.id
+        ressourcen_id: room.id,
       }))
     }
+
     await loadData()
   } catch (error) {
     apiError.value = getError(error)
@@ -282,21 +444,35 @@ async function toggleSchoolDay(klasse: SchoolClass, day: Weekday) {
 }
 
 function getUsedRooms(day: Weekday) {
-  return classes.value.filter(klasse => hasSchool(klasse, day)).length
+  return classes.value.filter(
+    klasse => hasSchool(klasse, day),
+  ).length
 }
 
 function getRoomCapacity(day: Weekday) {
-  return roomCapacities.value.find(room => room.day === day)?.capacity ?? 0
+  return roomCapacities.value.find(
+    room => room.day === day,
+  )?.capacity ?? 0
 }
 
-async function changeRoomCapacity(day: Weekday, amount: number) {
-  const room = roomCapacities.value.find(room => room.day === day)
+async function changeRoomCapacity(
+  day: Weekday,
+  amount: number,
+) {
+  const room = roomCapacities.value.find(
+    room => room.day === day,
+  )
+
   if (!room) return
 
   try {
-    await request(`/ressourcen/${room.id}`, json('PUT', {
-      anzahl_raeume: Math.max(0, room.capacity + amount)
-    }))
+    await request(
+      `/ressourcen/${room.id}`,
+      json('PUT', {
+        anzahl_raeume: Math.max(0, room.capacity + amount),
+      }),
+    )
+
     await loadData()
   } catch (error) {
     apiError.value = getError(error)
@@ -313,15 +489,24 @@ function getRoomConflictText(day: Weekday) {
   return `${missing} ${missing === 1 ? 'Raum' : 'Räume'} zu wenig`
 }
 
+// --------------------------------------------------
 // Klassenregeln
+// --------------------------------------------------
+
 async function addRule() {
-  if (!selectedClass.value || selectedRuleClassId.value === null) return
+  if (
+    !selectedClass.value ||
+    selectedRuleClassId.value === null
+  ) {
+    return
+  }
 
   try {
     await request('/regeln', json('POST', {
       klasse_a_id: selectedClass.value.id,
-      klasse_b_id: selectedRuleClassId.value
+      klasse_b_id: selectedRuleClassId.value,
     }))
+
     selectedRuleClassId.value = null
     await loadData()
   } catch (error) {
@@ -338,44 +523,172 @@ async function removeRule(ruleId: number) {
   }
 }
 
-function getOtherClassId(rule: ClassRule, classId: number) {
-  return rule.classAId === classId ? rule.classBId : rule.classAId
+function getOtherClassId(
+  rule: ClassRule,
+  classId: number,
+) {
+  return rule.classAId === classId
+    ? rule.classBId
+    : rule.classAId
 }
 
-function getOtherClassName(rule: ClassRule, classId: number) {
+function getOtherClassName(
+  rule: ClassRule,
+  classId: number,
+) {
   const id = getOtherClassId(rule, classId)
-  return classes.value.find(klasse => klasse.id === id)?.name ?? 'Unbekannt'
+
+  return classes.value.find(
+    klasse => klasse.id === id,
+  )?.name ?? 'Unbekannt'
 }
 
-function getConflictingClasses(klasse: SchoolClass, day: Weekday) {
+function getConflictingClasses(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
   if (!hasSchool(klasse, day)) return []
 
   return rules.value
-    .filter(rule => rule.classAId === klasse.id || rule.classBId === klasse.id)
-    .map(rule => classes.value.find(
-      other => other.id === getOtherClassId(rule, klasse.id)
-    ))
+    .filter(rule =>
+      rule.classAId === klasse.id ||
+      rule.classBId === klasse.id,
+    )
+    .map(rule =>
+      classes.value.find(
+        other =>
+          other.id === getOtherClassId(rule, klasse.id),
+      ),
+    )
     .filter((other): other is SchoolClass =>
-      other !== undefined && hasSchool(other, day)
+      other !== undefined && hasSchool(other, day),
     )
 }
 
-function hasConflict(klasse: SchoolClass, day: Weekday) {
+function hasConflict(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
   return getConflictingClasses(klasse, day).length > 0
 }
 
-function getConflictText(klasse: SchoolClass, day: Weekday) {
+function getConflictText(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
   return getConflictingClasses(klasse, day)
     .map(other =>
-      `${klasse.name} und ${other.name} dürfen nicht gleichzeitig Schule haben.`
+      `${klasse.name} und ${other.name} ` +
+      'dürfen nicht gleichzeitig Schule haben.',
     )
     .join('\n')
 }
 
-// Schuljahre sind in der Datenbank noch nicht hinterlegt
+// --------------------------------------------------
+// Labels hinzufügen und entfernen
+// --------------------------------------------------
+
+async function addLabel() {
+  const classId = selectedClassId.value
+  const name = newLabelName.value.trim()
+
+  if (
+    classId === null ||
+    labelsBusy.value ||
+    !labelsLoaded.value
+  ) {
+    return
+  }
+
+  labelError.value = ''
+
+  if (!name || Array.from(name).length > 50) {
+    labelError.value =
+      'Bitte ein Label mit 1 bis 50 Zeichen eingeben.'
+    return
+  }
+
+  if (
+    selectedClassLabels.value.some(
+      label =>
+        label.name.trim().toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    labelError.value = 'Diese Klasse hat dieses Label bereits.'
+    return
+  }
+
+  labelSaving.value = true
+
+  try {
+    const result = await request<DBClassLabel>(
+      `/klassen/${classId}/labels`,
+      json('POST', { name }),
+    )
+
+    const assignment = normalizeLabel(result)
+
+    if (
+      !classLabels.value.some(
+        label =>
+          label.klasse_id === assignment.klasse_id &&
+          label.label_id === assignment.label_id,
+      )
+    ) {
+      classLabels.value.push(assignment)
+    }
+
+    if (selectedClassId.value === classId) {
+      newLabelName.value = ''
+    }
+  } catch (error) {
+    if (selectedClassId.value === classId) {
+      labelError.value = getError(error)
+    }
+  } finally {
+    labelSaving.value = false
+  }
+}
+
+async function removeLabel(labelId: number) {
+  const classId = selectedClassId.value
+
+  if (
+    classId === null ||
+    labelsBusy.value ||
+    !labelsLoaded.value
+  ) {
+    return
+  }
+
+  labelError.value = ''
+  labelSaving.value = true
+
+  try {
+    await request(
+      `/klassen/${classId}/labels/${labelId}`,
+      json('DELETE'),
+    )
+
+    classLabels.value = classLabels.value.filter(
+      label =>
+        label.klasse_id !== classId ||
+        label.label_id !== labelId,
+    )
+  } catch (error) {
+    if (selectedClassId.value === classId) {
+      labelError.value = getError(error)
+    }
+  } finally {
+    labelSaving.value = false
+  }
+}
+
+// Schuljahre sind in der Datenbank noch nicht hinterlegt.
 function changeSchoolYear(_direction: number) {
   apiError.value =
-    'Der Schuljahreswechsel benötigt noch eine Schuljahr-Zuordnung in der Datenbank.'
+    'Der Schuljahreswechsel benötigt noch eine ' +
+    'Schuljahr-Zuordnung in der Datenbank.'
 }
 
 onMounted(loadData)
@@ -393,6 +706,7 @@ onMounted(loadData)
           <router-link to="/home" class="nav-link">
             Wochenplan
           </router-link>
+
           <router-link to="/lehrgang" class="nav-link">
             Lehrgänge
           </router-link>
@@ -408,8 +722,13 @@ onMounted(loadData)
     </div>
 
     <main class="page-main">
-      <p v-if="loading" class="status-message">Daten werden geladen...</p>
-      <p v-if="apiError" class="api-error" role="alert">{{ apiError }}</p>
+      <p v-if="loading" class="status-message">
+        Daten werden geladen...
+      </p>
+
+      <p v-if="apiError" class="api-error" role="alert">
+        {{ apiError }}
+      </p>
 
       <!-- Klassenübersicht -->
       <aside class="panel">
@@ -436,7 +755,10 @@ onMounted(loadData)
           >
 
           <select v-model="selectedLehrgangId" required>
-            <option :value="null">Lehrgang auswählen</option>
+            <option :value="null">
+              Lehrgang auswählen
+            </option>
+
             <option
               v-for="lehrgang in lehrgaenge"
               :key="lehrgang.id"
@@ -446,9 +768,17 @@ onMounted(loadData)
             </option>
           </select>
 
-          <button type="submit" class="primary-button">Erstellen</button>
-          <button type="button" @click="cancelCreateClass">Abbrechen</button>
-          <p v-if="classError" class="api-error">{{ classError }}</p>
+          <button type="submit" class="primary-button">
+            Erstellen
+          </button>
+
+          <button type="button" @click="cancelCreateClass">
+            Abbrechen
+          </button>
+
+          <p v-if="classError" class="api-error">
+            {{ classError }}
+          </p>
         </form>
 
         <input
@@ -459,11 +789,17 @@ onMounted(loadData)
         >
 
         <ul class="item-list">
-          <li v-for="klasse in filteredClasses" :key="klasse.id">
+          <li
+            v-for="klasse in filteredClasses"
+            :key="klasse.id"
+          >
             <button
               type="button"
               class="list-button"
-              :class="{ selected: selectedClassId === klasse.id }"
+              :class="{
+                selected: selectedClassId === klasse.id,
+              }"
+              :disabled="labelSaving"
               @click="selectClass(klasse.id)"
             >
               {{ klasse.name }}
@@ -482,9 +818,21 @@ onMounted(loadData)
           <h2>Wochenansicht</h2>
 
           <div class="year-navigation">
-            <button type="button" @click="changeSchoolYear(-1)">←</button>
+            <button
+              type="button"
+              @click="changeSchoolYear(-1)"
+            >
+              ←
+            </button>
+
             <strong>{{ schoolYearLabel }}</strong>
-            <button type="button" @click="changeSchoolYear(1)">→</button>
+
+            <button
+              type="button"
+              @click="changeSchoolYear(1)"
+            >
+              →
+            </button>
           </div>
         </div>
 
@@ -493,7 +841,10 @@ onMounted(loadData)
             <thead>
             <tr>
               <th>Klasse</th>
-              <th v-for="day in weekdays" :key="day">{{ day }}</th>
+
+              <th v-for="day in weekdays" :key="day">
+                {{ day }}
+              </th>
             </tr>
             </thead>
 
@@ -528,7 +879,10 @@ onMounted(loadData)
 
               <td v-for="day in weekdays" :key="day">
                 <div class="room-controls">
-                  <span>{{ getUsedRooms(day) }} / {{ getRoomCapacity(day) }}</span>
+                    <span>
+                      {{ getUsedRooms(day) }} /
+                      {{ getRoomCapacity(day) }}
+                    </span>
 
                   <span
                     v-if="hasRoomConflict(day)"
@@ -545,6 +899,7 @@ onMounted(loadData)
                     >
                       ▲
                     </button>
+
                     <button
                       type="button"
                       @click="changeRoomCapacity(day, -1)"
@@ -567,8 +922,14 @@ onMounted(loadData)
         <div v-if="selectedClass">
           <h3>{{ selectedClass.name }}</h3>
 
-          <form class="form-stack" @submit.prevent="renameClass">
-            <label for="class-name">Klassenname</label>
+          <form
+            class="form-stack"
+            @submit.prevent="renameClass"
+          >
+            <label for="class-name">
+              Klassenname
+            </label>
+
             <input
               id="class-name"
               v-model="editedClassName"
@@ -579,18 +940,135 @@ onMounted(loadData)
             <button type="submit" class="primary-button">
               Namen speichern
             </button>
-            <p v-if="editClassError" class="api-error">{{ editClassError }}</p>
+
+            <p v-if="editClassError" class="api-error">
+              {{ editClassError }}
+            </p>
           </form>
 
+          <!-- Labels -->
+          <h3>Labels</h3>
+
+          <p
+            v-if="labelsLoading"
+            class="help-text"
+            role="status"
+          >
+            Labels werden geladen...
+          </p>
+
+          <div v-if="labelLoadError" class="label-load-error">
+            <p class="api-error" role="alert">
+              Labels konnten nicht geladen werden:
+              {{ labelLoadError }}
+            </p>
+
+            <button
+              type="button"
+              :disabled="labelsBusy"
+              @click="loadLabels"
+            >
+              Labels erneut laden
+            </button>
+          </div>
+
+          <ul class="class-labels">
+            <li
+              v-for="label in selectedClassLabels"
+              :key="label.label_id"
+              class="class-label"
+            >
+              <span>{{ label.name }}</span>
+
+              <button
+                type="button"
+                :disabled="labelsBusy || !labelsLoaded"
+                :aria-label="
+                  `Label ${label.name} von dieser Klasse entfernen`
+                "
+                @click="removeLabel(label.label_id)"
+              >
+                ×
+              </button>
+            </li>
+          </ul>
+
+          <p
+            v-if="
+              labelsLoaded &&
+              !labelsLoading &&
+              selectedClassLabels.length === 0
+            "
+            class="help-text"
+          >
+            Noch keine Labels vorhanden.
+          </p>
+
+          <form
+            class="form-stack"
+            @submit.prevent="addLabel"
+          >
+            <label for="new-class-label">
+              Neues Stichwort
+            </label>
+
+            <input
+              id="new-class-label"
+              v-model="newLabelName"
+              type="text"
+              placeholder="Zum Beispiel ÜK vorhanden"
+              maxlength="50"
+              :disabled="labelsBusy || !labelsLoaded"
+              required
+            >
+
+            <button
+              type="submit"
+              :disabled="
+                labelsBusy ||
+                !labelsLoaded ||
+                !newLabelName.trim()
+              "
+            >
+              Label hinzufügen
+            </button>
+
+            <p
+              v-if="labelSaving"
+              class="help-text"
+              role="status"
+            >
+              Label wird gespeichert...
+            </p>
+
+            <p
+              v-if="labelError"
+              class="api-error"
+              role="alert"
+            >
+              {{ labelError }}
+            </p>
+          </form>
+
+          <!-- Regeln -->
           <h3>Regeln</h3>
 
-          <form class="form-stack" @submit.prevent="addRule">
+          <form
+            class="form-stack"
+            @submit.prevent="addRule"
+          >
             <label for="rule-class">
               Darf nicht am gleichen Tag wie:
             </label>
 
-            <select id="rule-class" v-model="selectedRuleClassId">
-              <option :value="null">Klasse auswählen</option>
+            <select
+              id="rule-class"
+              v-model="selectedRuleClassId"
+            >
+              <option :value="null">
+                Klasse auswählen
+              </option>
+
               <option
                 v-for="klasse in availableRuleClasses"
                 :key="klasse.id"
@@ -600,13 +1078,24 @@ onMounted(loadData)
               </option>
             </select>
 
-            <button type="submit">Regel hinzufügen</button>
+            <button type="submit">
+              Regel hinzufügen
+            </button>
           </form>
 
           <ul class="rule-list">
-            <li v-for="rule in selectedClassRules" :key="rule.id">
-              <span>{{ getOtherClassName(rule, selectedClass.id) }}</span>
-              <button type="button" @click="removeRule(rule.id)">
+            <li
+              v-for="rule in selectedClassRules"
+              :key="rule.id"
+            >
+              <span>
+                {{ getOtherClassName(rule, selectedClass.id) }}
+              </span>
+
+              <button
+                type="button"
+                @click="removeRule(rule.id)"
+              >
                 Entfernen
               </button>
             </li>
@@ -615,6 +1104,7 @@ onMounted(loadData)
           <button
             type="button"
             class="danger-button"
+            :disabled="labelSaving"
             @click="deleteClass"
           >
             Klasse löschen
@@ -748,6 +1238,11 @@ onMounted(loadData)
 button {
   cursor: pointer;
   font-family: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 input,
@@ -912,6 +1407,10 @@ tfoot th {
   margin: 0;
 }
 
+.api-error {
+  overflow-wrap: anywhere;
+}
+
 .danger-button {
   color: #b91c1c;
   background: #fef2f2;
@@ -920,6 +1419,70 @@ tfoot th {
   padding: 10px 14px;
 }
 
+/* Labels */
+.help-text {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.label-load-error {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.class-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 12px 0;
+  list-style: none;
+}
+
+.class-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+}
+
+.class-label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.class-label button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #1d4ed8;
+  font-size: 20px;
+}
+
+.class-label button:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.class-label button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
 
 /* Responsive Design */
 @media (max-width: 1100px) {
@@ -959,7 +1522,5 @@ tfoot th {
   .page-main > aside:last-child {
     grid-column: auto;
   }
-
-
 }
 </style>
