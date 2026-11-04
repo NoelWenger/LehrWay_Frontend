@@ -140,7 +140,7 @@ export function switchYear() {
     {
 
       method: 'POST',
-      
+
       body: JSON.stringify({ })
     }
   )
