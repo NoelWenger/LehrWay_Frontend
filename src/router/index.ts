@@ -33,21 +33,6 @@ const router = createRouter({
       name: 'lehrgang',
       component: lehrgangpage
     },
-    {
-      path: '/lehrgang',
-      name: 'lehrgang',
-      component: lehrgangpage
-    },
-    {
-      path: '/lehrgang',
-      name: 'lehrgang',
-      component: lehrgangpage
-    },
-    {
-      path: '/lehrgang',
-      name: 'lehrgang',
-      component: lehrgangpage
-    },
   ],
 })
 
