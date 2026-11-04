@@ -25,6 +25,7 @@ const handleLogin = async () => {
 
     if (response.ok && data.success) {
       console.log('Login erfolgreich! Weiterleitung...')
+      localStorage.setItem('user', JSON.stringify(data.user))
       router.push('/home')
     } else {
       alert(data.message || 'Login fehlgeschlagen!')
