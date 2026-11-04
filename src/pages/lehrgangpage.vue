@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
 import Footer from '@/components/Footer.vue'
+import UserMenu from '@/components/UserMenu.vue'
 
 interface CourseField {
   id: number
@@ -466,12 +467,20 @@ onMounted(loadCourses)
   <div class="page-shell">
     <header class="site-header">
       <div class="header-inner">
-        <router-link to="/home" class="brand"> Lehr<span>way</span> </router-link>
+        <router-link to="/home" class="brand">
+          Lehr<span>way</span>
+        </router-link>
 
         <nav class="site-nav" aria-label="Hauptnavigation">
-          <router-link to="/home" class="nav-link">Wochenplan</router-link>
-          <router-link to="/lehrgang" class="nav-link">Lehrgänge</router-link>
+          <router-link to="/home" class="nav-link">
+            Wochenplan
+          </router-link>
+          <router-link to="/lehrgang" class="nav-link">
+            Lehrgänge
+          </router-link>
         </nav>
+
+        <UserMenu />
       </div>
     </header>
 
