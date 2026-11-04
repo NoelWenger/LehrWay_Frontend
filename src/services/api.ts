@@ -131,3 +131,19 @@ export function register(email: string, password: string) {
     }
   )
 }
+
+
+/*
+export function switchYear() {
+  return apiRequest<{ success: boolean; message: string }>(
+    '/Suceed',
+    {
+
+      method: 'POST',
+      
+      body: JSON.stringify({ })
+    }
+  )
+}*/
+
+
