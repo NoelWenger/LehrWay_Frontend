@@ -1,14 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-
 import loginpage from '@/pages/loginpage.vue'
-
 import registerpage from '@/pages/registerpage.vue'
-
 import homepage from '@/pages/homepage.vue'
-
 import lehrgangpage from '@/pages/lehrgangpage.vue'
-
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,11 +27,19 @@ const router = createRouter({
       path: '/lehrgang',
       name: 'lehrgang',
       component: lehrgangpage
-    },
+    }
   ],
 })
 
+router.beforeEach((to) => {
+  const publicPages = ['/', '/register']
+  const authRequired = !publicPages.includes(to.path)
 
+  const loggedInUser = localStorage.getItem('user')
 
+  if (authRequired && !loggedInUser) {
+    return '/'
+  }
+})
 
 export default router
