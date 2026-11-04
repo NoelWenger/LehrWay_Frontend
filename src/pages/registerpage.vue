@@ -45,13 +45,17 @@ const handleRegister = async () => {
 <template>
   <div class="page-shell">
 
+
     <header class="site-header">
       <div class="header-inner">
         <h1 class="brand">
-          Lehr<span>way</span>
+
+            Lehr<span>way</span>
+
         </h1>
       </div>
     </header>
+
 
     <main class="page-main">
       <div class="auth-card">
@@ -63,7 +67,7 @@ const handleRegister = async () => {
             <input
               type="email"
               v-model="email"
-              placeholder="x@x.ch"
+              placeholder="example@examplemail.ch"
               required
             />
           </div>
@@ -73,7 +77,7 @@ const handleRegister = async () => {
             <input
               type="password"
               v-model="password"
-              placeholder="x"
+              placeholder="password"
               required
             />
           </div>
@@ -83,7 +87,7 @@ const handleRegister = async () => {
             <input
               type="password"
               v-model="passwordConfirm"
-              placeholder="x"
+              placeholder="password wiederholen"
               required
             />
           </div>
@@ -246,6 +250,11 @@ const handleRegister = async () => {
 
   .auth-card {
     padding: 26px 20px;
+  }
+
+  .h1 a {
+    color: #2563eb;
+
   }
 }
 </style>
