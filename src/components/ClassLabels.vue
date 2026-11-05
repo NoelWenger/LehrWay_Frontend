@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
 import LabelColorPicker from '@/components/LabelColorPicker.vue'
 
 interface ClassLabel {
   klasse_id: number
   label_id: number
+  name: string
+  farbe: string
+}
+
+interface ExistingLabel {
+  id: number
   name: string
   farbe: string
 }
@@ -37,8 +43,16 @@ const emit = defineEmits<{
   removed: [removal: LabelRemoval]
 }>()
 
+const mode = ref<'existing' | 'new'>('existing')
+
+const existingLabels = ref<ExistingLabel[]>([])
+const existingLabelsLoading = ref(false)
+const existingLabelsError = ref('')
+const selectedExistingId = ref<number | null>(null)
+
 const newLabelName = ref('')
 const newLabelColor = ref('#0d6efd')
+
 const editingColorId = ref<number | null>(null)
 const saving = ref(false)
 const error = ref('')
@@ -51,6 +65,37 @@ const editingColorLabel = computed(() =>
   props.labels.find(
     label => label.label_id === editingColorId.value,
   ),
+)
+
+// Bereits zugeordnete Labels nicht erneut anbieten.
+const availableLabels = computed(() =>
+  existingLabels.value.filter(
+    label =>
+      !props.labels.some(
+        assigned => assigned.label_id === label.id,
+      ),
+  ),
+)
+
+const selectedExistingLabel = computed(() =>
+  availableLabels.value.find(
+    label => label.id === selectedExistingId.value,
+  ),
+)
+
+// Erkennt auch einen vorhandenen Namen im Formular „Neues Label“.
+const existingNameLabel = computed(() => {
+  const name = newLabelName.value.trim().toLowerCase()
+
+  if (!name) return undefined
+
+  return existingLabels.value.find(
+    label => label.name.trim().toLowerCase() === name,
+  )
+})
+
+const newLabelPreviewColor = computed(() =>
+  existingNameLabel.value?.farbe ?? newLabelColor.value,
 )
 
 function getError(value: unknown): string {
@@ -103,12 +148,10 @@ function setSaving(value: boolean) {
   emit('busy-change', value)
 }
 
-function toggleColorEditor(labelId: number) {
-  if (busy.value || !props.ready) return
+function changeMode(value: 'existing' | 'new') {
+  if (busy.value) return
 
-  editingColorId.value =
-    editingColorId.value === labelId ? null : labelId
-
+  mode.value = value
   error.value = ''
 }
 
@@ -123,7 +166,9 @@ function normalizeLabel(row: ClassLabel): ClassLabel {
     labelId <= 0 ||
     typeof row.name !== 'string'
   ) {
-    throw new Error('Die API hat ungültige Label-Daten zurückgegeben.')
+    throw new Error(
+      'Die API hat ungültige Label-Daten zurückgegeben.',
+    )
   }
 
   return {
@@ -134,7 +179,130 @@ function normalizeLabel(row: ClassLabel): ClassLabel {
   }
 }
 
-async function addLabel() {
+// --------------------------------------------------
+// Alle vorhandenen Labels laden
+// --------------------------------------------------
+
+async function loadExistingLabels() {
+  if (existingLabelsLoading.value) return
+
+  existingLabelsLoading.value = true
+  existingLabelsError.value = ''
+
+  try {
+    const rows = await request<ExistingLabel[]>('/labels')
+
+    if (!Array.isArray(rows)) {
+      throw new Error(
+        'Die API hat keine Label-Liste zurückgegeben.',
+      )
+    }
+
+    const normalized = rows.map(row => {
+      const id = Number(row.id)
+
+      if (
+        !Number.isSafeInteger(id) ||
+        id <= 0 ||
+        typeof row.name !== 'string'
+      ) {
+        throw new Error(
+          'Die API hat ungültige Label-Daten zurückgegeben.',
+        )
+      }
+
+      return {
+        id,
+        name: row.name,
+        farbe: normalizeColor(row.farbe),
+      }
+    })
+
+    existingLabels.value = normalized
+
+    if (
+      selectedExistingId.value !== null &&
+      !availableLabels.value.some(
+        label => label.id === selectedExistingId.value,
+      )
+    ) {
+      selectedExistingId.value = null
+    }
+  } catch (value) {
+    existingLabelsError.value = getError(value)
+  } finally {
+    existingLabelsLoading.value = false
+  }
+}
+
+function updateCatalog(assignment: ClassLabel) {
+  const existing = existingLabels.value.find(
+    label => label.id === assignment.label_id,
+  )
+
+  if (existing) {
+    existing.name = assignment.name
+    existing.farbe = assignment.farbe
+  } else {
+    existingLabels.value.push({
+      id: assignment.label_id,
+      name: assignment.name,
+      farbe: assignment.farbe,
+    })
+  }
+
+  existingLabels.value.sort(
+    (first, second) => first.name.localeCompare(second.name),
+  )
+}
+
+// --------------------------------------------------
+// Vorhandenes oder neues Label zuordnen
+// --------------------------------------------------
+
+async function saveAssignment(name: string, color: string) {
+  if (busy.value || !props.ready) return
+
+  error.value = ''
+  setSaving(true)
+
+  try {
+    const result = await request<ClassLabel>(
+      `/klassen/${props.classId}/labels`,
+      json('POST', {
+        name,
+        farbe: normalizeColor(color),
+      }),
+    )
+
+    const assignment = normalizeLabel(result)
+
+    updateCatalog(assignment)
+    emit('saved', assignment)
+
+    newLabelName.value = ''
+    selectedExistingId.value = null
+  } catch (value) {
+    error.value = getError(value)
+  } finally {
+    setSaving(false)
+  }
+}
+
+async function addExistingLabel() {
+  if (busy.value || !props.ready) return
+
+  const label = selectedExistingLabel.value
+
+  if (!label) {
+    error.value = 'Bitte ein vorhandenes Label auswählen.'
+    return
+  }
+
+  await saveAssignment(label.name, label.farbe)
+}
+
+async function addNewLabel() {
   if (busy.value || !props.ready) return
 
   const name = newLabelName.value.trim()
@@ -153,29 +321,24 @@ async function addLabel() {
     )
   ) {
     error.value =
-      'Diese Klasse hat dieses Label bereits. ' +
-      'Du kannst seine Farbe über die Palette ändern.'
+      'Diese Klasse hat dieses Label bereits.'
     return
   }
 
-  setSaving(true)
+  await saveAssignment(name, newLabelPreviewColor.value)
+}
 
-  try {
-    const result = await request<ClassLabel>(
-      `/klassen/${props.classId}/labels`,
-      json('POST', {
-        name,
-        farbe: normalizeColor(newLabelColor.value),
-      }),
-    )
+// --------------------------------------------------
+// Gemeinsame Farbe ändern
+// --------------------------------------------------
 
-    emit('saved', normalizeLabel(result))
-    newLabelName.value = ''
-  } catch (value) {
-    error.value = getError(value)
-  } finally {
-    setSaving(false)
-  }
+function toggleColorEditor(labelId: number) {
+  if (busy.value || !props.ready) return
+
+  editingColorId.value =
+    editingColorId.value === labelId ? null : labelId
+
+  error.value = ''
 }
 
 async function changeEditingColor(color: string) {
@@ -184,6 +347,7 @@ async function changeEditingColor(color: string) {
   if (!label || busy.value || !props.ready) return
 
   const normalized = normalizeColor(color)
+
   if (normalized === normalizeColor(label.farbe)) return
 
   error.value = ''
@@ -197,9 +361,20 @@ async function changeEditingColor(color: string) {
       }),
     )
 
+    const labelId = Number(result.label_id)
+    const savedColor = normalizeColor(result.farbe)
+
+    const catalogLabel = existingLabels.value.find(
+      entry => entry.id === labelId,
+    )
+
+    if (catalogLabel) {
+      catalogLabel.farbe = savedColor
+    }
+
     emit('color-changed', {
-      label_id: Number(result.label_id),
-      farbe: normalizeColor(result.farbe),
+      label_id: labelId,
+      farbe: savedColor,
     })
   } catch (value) {
     error.value = getError(value)
@@ -207,6 +382,10 @@ async function changeEditingColor(color: string) {
     setSaving(false)
   }
 }
+
+// --------------------------------------------------
+// Zuordnung entfernen
+// --------------------------------------------------
 
 async function removeLabel(labelId: number) {
   if (busy.value || !props.ready) return
@@ -234,6 +413,8 @@ async function removeLabel(labelId: number) {
     setSaving(false)
   }
 }
+
+onMounted(loadExistingLabels)
 </script>
 
 <template>
@@ -259,6 +440,7 @@ async function removeLabel(labelId: number) {
       </button>
     </div>
 
+    <!-- Bereits zugeordnete Labels -->
     <ul class="class-labels">
       <li
         v-for="label in labels"
@@ -304,6 +486,7 @@ async function removeLabel(labelId: number) {
       Noch keine Labels vorhanden.
     </p>
 
+    <!-- Gemeinsame Farbe bearbeiten -->
     <div
       v-if="editingColorLabel"
       :id="`label-color-editor-${classId}`"
@@ -333,7 +516,141 @@ async function removeLabel(labelId: number) {
       />
     </div>
 
-    <form class="label-form" @submit.prevent="addLabel">
+    <!-- Zwischen Wiederverwenden und Erstellen wechseln -->
+    <div
+      class="mode-switch"
+      role="group"
+      aria-label="Label hinzufügen"
+    >
+      <button
+        type="button"
+        :class="{ active: mode === 'existing' }"
+        :aria-pressed="mode === 'existing'"
+        :disabled="busy"
+        @click="changeMode('existing')"
+      >
+        Vorhandenes Label
+      </button>
+
+      <button
+        type="button"
+        :class="{ active: mode === 'new' }"
+        :aria-pressed="mode === 'new'"
+        :disabled="busy"
+        @click="changeMode('new')"
+      >
+        Neues Label
+      </button>
+    </div>
+
+    <!-- Vorhandenes Label verwenden -->
+    <form
+      v-if="mode === 'existing'"
+      class="label-form"
+      @submit.prevent="addExistingLabel"
+    >
+      <label :for="`existing-label-${classId}`">
+        Label auswählen
+      </label>
+
+      <p
+        v-if="existingLabelsLoading"
+        class="help-text"
+        role="status"
+      >
+        Vorhandene Labels werden geladen...
+      </p>
+
+      <div
+        v-if="existingLabelsError"
+        class="load-error"
+      >
+        <p class="error-message" role="alert">
+          {{ existingLabelsError }}
+        </p>
+      </div>
+
+      <select
+        :id="`existing-label-${classId}`"
+        v-model="selectedExistingId"
+        :disabled="
+          busy ||
+          !ready ||
+          existingLabelsLoading ||
+          availableLabels.length === 0
+        "
+        required
+      >
+        <option :value="null" disabled>
+          Label auswählen
+        </option>
+
+        <option
+          v-for="label in availableLabels"
+          :key="label.id"
+          :value="label.id"
+        >
+          {{ label.name }}
+        </option>
+      </select>
+
+      <div
+        v-if="selectedExistingLabel"
+        class="label-preview"
+      >
+        <span class="preview-caption">
+          Vorschau
+        </span>
+
+        <span
+          class="label-badge"
+          :style="badgeStyle(selectedExistingLabel.farbe)"
+        >
+          {{ selectedExistingLabel.name }}
+        </span>
+      </div>
+
+      <p
+        v-if="
+          !existingLabelsLoading &&
+          !existingLabelsError &&
+          availableLabels.length === 0
+        "
+        class="help-text"
+      >
+        Es gibt momentan keine weiteren Labels zur Auswahl.
+        Du kannst unter „Neues Label“ eines erstellen.
+      </p>
+
+      <button
+        type="submit"
+        class="primary-button"
+        :disabled="
+          busy ||
+          !ready ||
+          existingLabelsLoading ||
+          !selectedExistingLabel
+        "
+      >
+        Label hinzufügen
+      </button>
+
+      <button
+        type="button"
+        class="refresh-button"
+        :disabled="busy || existingLabelsLoading"
+        @click="loadExistingLabels"
+      >
+        Liste aktualisieren
+      </button>
+    </form>
+
+    <!-- Neues Label erstellen -->
+    <form
+      v-else
+      class="label-form"
+      @submit.prevent="addNewLabel"
+    >
       <label :for="`new-class-label-${classId}`">
         Neues Stichwort
       </label>
@@ -342,40 +659,45 @@ async function removeLabel(labelId: number) {
         :id="`new-class-label-${classId}`"
         v-model="newLabelName"
         type="text"
-        placeholder="Zum Beispiel ÜK vorhanden"
+        placeholder="Zum Beispiel Testing"
         maxlength="50"
         :disabled="busy || !ready"
         required
       >
 
+      <p v-if="existingNameLabel" class="help-text">
+        Dieses Label existiert bereits. Es wird mit seiner
+        gespeicherten Farbe übernommen.
+      </p>
+
       <LabelColorPicker
         v-model="newLabelColor"
-        :disabled="busy || !ready"
+        :disabled="busy || !ready || !!existingNameLabel"
       />
 
       <div class="label-preview">
-        <span class="preview-caption">Vorschau</span>
+        <span class="preview-caption">
+          Vorschau
+        </span>
 
         <span
           class="label-badge"
-          :style="badgeStyle(newLabelColor)"
+          :style="badgeStyle(newLabelPreviewColor)"
         >
           {{ newLabelName.trim() || 'Dein Label' }}
         </span>
       </div>
-
-      <p class="help-text">
-        Existiert der Labelname bereits, wird dessen gemeinsame
-        Farbe übernommen. Über die Palette am Label kannst du
-        sie für alle Klassen ändern.
-      </p>
 
       <button
         type="submit"
         class="primary-button"
         :disabled="busy || !ready || !newLabelName.trim()"
       >
-        Label hinzufügen
+        {{
+          existingNameLabel
+            ? 'Vorhandenes Label hinzufügen'
+            : 'Label erstellen'
+        }}
       </button>
     </form>
 
@@ -400,7 +722,8 @@ h3 {
 }
 
 button,
-input {
+input,
+select {
   font-family: inherit;
 }
 
@@ -531,6 +854,34 @@ button:focus-visible {
   font-size: 22px;
 }
 
+.mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  margin-top: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f1f5f9;
+}
+
+.mode-switch button {
+  flex: 1 1 90px;
+  padding: 8px 6px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mode-switch button.active {
+  background: white;
+  color: #1d4ed8;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
 .label-form {
   display: flex;
   flex-direction: column;
@@ -538,15 +889,19 @@ button:focus-visible {
   margin: 16px 0;
 }
 
-.label-form > input {
+.label-form > input,
+.label-form > select {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
+  background: white;
+  color: #172033;
 }
 
-.label-form > input:focus {
+.label-form > input:focus,
+.label-form > select:focus {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
   border-color: #2563eb;
@@ -563,6 +918,19 @@ button:focus-visible {
 
 .primary-button:hover:not(:disabled) {
   background: #1d4ed8;
+}
+
+.refresh-button {
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  color: #475569;
+  font-size: 12px;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background: #f8fafc;
 }
 
 .label-preview {
