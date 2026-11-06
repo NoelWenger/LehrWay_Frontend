@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { confirmAction } from '@/composables/useConfirm'
 
 const router = useRouter()
 const username = ref('')
@@ -8,6 +9,7 @@ const username = ref('')
 onMounted(() => {
   try {
     const storedUser = localStorage.getItem('user')
+
     if (!storedUser) return
 
     const user = JSON.parse(storedUser)
@@ -21,9 +23,16 @@ onMounted(() => {
 })
 
 async function logout() {
-  if (!window.confirm('Möchtest du dich wirklich abmelden?')) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Abmelden?',
+    message:
+      'Möchtest du dich wirklich abmelden? ' +
+      'Du wirst zur Loginseite zurückgeleitet.',
+    confirmLabel: 'Abmelden',
+    tone: 'neutral',
+  })
+
+  if (!confirmed) return
 
   localStorage.removeItem('user')
   username.value = ''
@@ -39,15 +48,21 @@ async function logout() {
         {{ username.charAt(0).toUpperCase() }}
       </span>
 
-      <span class="user-name">{{ username }}</span>
+      <span class="user-name">
+        {{ username }}
+      </span>
+
       <span aria-hidden="true">▾</span>
     </summary>
 
     <div class="user-dropdown">
-      <button type="button" class="logout-button" @click="logout">
+      <button
+        type="button"
+        class="logout-button"
+        @click="logout"
+      >
         Abmelden
       </button>
     </div>
   </details>
 </template>
-

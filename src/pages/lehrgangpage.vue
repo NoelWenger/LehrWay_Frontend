@@ -4,6 +4,7 @@ import { request, json } from '../services/lehrway-api'
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import CoursePlan from '@/components/CoursePlan.vue'
+import { confirmAction } from '@/composables/useConfirm'
 
 import type {
   Course,
@@ -257,9 +258,15 @@ async function deleteCourse() {
   const course = selectedCourse.value
   if (!course || busy.value) return
 
-  if (!confirm('Möchtest du diesen Lehrgang wirklich löschen?')) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Lehrgang löschen?',
+    message:
+      `Möchtest du den Lehrgang „${course.name}“ wirklich löschen?`,
+    confirmLabel: 'Lehrgang löschen',
+    tone: 'danger',
+  })
+
+  if (!confirmed) return
 
   saving.value = true
 
@@ -330,9 +337,16 @@ async function addModule(name: string) {
 async function removeModule(module: CourseModule) {
   if (busy.value) return
 
-  if (!confirm(`Möchtest du das Modul "${module.name}" löschen?`)) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Modul entfernen?',
+    message:
+      `Möchtest du das Modul „${module.name}“ entfernen? ` +
+      'Seine Quartalsfelder werden ebenfalls gelöscht.',
+    confirmLabel: 'Modul entfernen',
+    tone: 'danger',
+  })
+
+  if (!confirmed) return
 
   await savePlanChange(async () => {
     for (const field of [...module.fields]) {
@@ -403,9 +417,15 @@ async function saveField(update: CourseFieldUpdate) {
 async function removeField(fieldId: number) {
   if (busy.value) return
 
-  if (!confirm('Möchtest du dieses Quartalsfeld löschen?')) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Quartalsfeld löschen?',
+    message:
+      'Möchtest du dieses Quartalsfeld mit seinen Lektionen wirklich löschen?',
+    confirmLabel: 'Feld löschen',
+    tone: 'danger',
+  })
+
+  if (!confirmed) return
 
   await savePlanChange(async () => {
     await request(`/lehrgang-module/${fieldId}`, json('DELETE'))

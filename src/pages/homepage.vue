@@ -5,6 +5,7 @@ import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import WeeklySchedule from '@/components/WeeklySchedule.vue'
 import ClassEditor from '@/components/ClassEditor.vue'
+import { confirmAction } from '@/composables/useConfirm'
 
 import type {
   ClassLabel,
@@ -325,9 +326,16 @@ async function deleteClass() {
   const klasse = selectedClass.value
   if (!klasse || busy.value) return
 
-  if (!confirm('Möchtest du diese Klasse wirklich löschen?')) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Klasse löschen?',
+    message:
+      `Möchtest du die Klasse „${klasse.name}“ wirklich löschen? ` +
+      'Ihre Module und Zuordnungen werden ebenfalls entfernt.',
+    confirmLabel: 'Klasse löschen',
+    tone: 'danger',
+  })
+
+  if (!confirmed) return
 
   await saveChange(async () => {
     await request(`/klassen/${klasse.id}`, json('DELETE'))
