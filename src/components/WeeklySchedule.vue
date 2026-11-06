@@ -52,7 +52,49 @@ function getRoomCapacity(day: Weekday) {
     room => room.day === day,
   )?.capacity ?? 0
 }
+function getPotentialConflictText(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
+  // Nur leere Felder prüfen.
+  if (hasSchool(klasse, day)) return ''
 
+  // Betroffene andere Klassen nur einmal zählen.
+  const conflictingClassIds = new Set<number>()
+
+  for (const rule of props.rules) {
+    if (
+      rule.classAId !== klasse.id &&
+      rule.classBId !== klasse.id
+    ) {
+      continue
+    }
+
+    const otherId = getOtherClassId(rule, klasse.id)
+
+    const otherClass = props.classes.find(
+      entry => entry.id === otherId,
+    )
+
+    if (otherClass && hasSchool(otherClass, day)) {
+      conflictingClassIds.add(otherId)
+    }
+  }
+
+  let conflictCount = conflictingClassIds.size
+
+  // Eine zusätzliche Klasse benötigt einen weiteren Raum.
+  // Raumknappheit zählt als eine weitere Konfliktursache.
+  if (getUsedRooms(day) + 1 > getRoomCapacity(day)) {
+    conflictCount += 1
+  }
+
+  if (conflictCount === 0) return ''
+
+  return conflictCount === 1
+    ? 'Es entsteht ein Konflikt'
+    : 'Es entstehen Konflikte'
+}
 function getMissingRooms(day: Weekday) {
   return getUsedRooms(day) - getRoomCapacity(day)
 }
@@ -212,6 +254,7 @@ function badgeStyle(value: string) {
               :class="{ active: hasSchool(klasse, day) }"
               :disabled="busy"
               :aria-pressed="hasSchool(klasse, day)"
+              :title="getPotentialConflictText(klasse, day)"
               @click="emit('toggle-day', klasse.id, day)"
             >
               {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
@@ -277,134 +320,3 @@ function badgeStyle(value: string) {
   </section>
 </template>
 
-<style scoped>
-h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-button {
-  cursor: pointer;
-  font-family: inherit;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-button:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 3px;
-}
-
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.year-navigation {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.year-navigation button,
-.room-controls button {
-  padding: 5px 9px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: white;
-}
-
-.table-wrapper {
-  overflow-x: auto;
-  margin-top: 18px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-th,
-td {
-  padding: 12px 8px;
-  border: 1px solid #e2e8f0;
-  text-align: center;
-}
-
-thead th {
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-tbody th,
-tfoot th {
-  background: #f8fafc;
-}
-
-.class-name-cell {
-  min-width: 110px;
-  max-width: 190px;
-  vertical-align: middle;
-}
-
-.class-name-cell.selected {
-  box-shadow: inset 3px 0 0 #2563eb;
-}
-
-.table-labels {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 5px;
-  margin-top: 9px;
-}
-
-.label-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  max-width: 100%;
-  padding: 4px 8px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.school-day-button {
-  width: 100%;
-  padding: 9px 6px;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #475569;
-}
-
-.school-day-button.active {
-  background: #dbeafe;
-  color: #1d4ed8;
-  border-color: #93c5fd;
-}
-
-.room-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.conflict {
-  display: block;
-  margin-top: 5px;
-  color: #dc2626;
-  font-size: 12px;
-}
-</style>
