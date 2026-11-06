@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import {
+  computed,
+  onMounted,
+  reactive,
+  ref,
+} from 'vue'
 
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
-
-import {
-  request,
-} from '@/services/lehrway-api'
+import { request } from '@/services/lehrway-api'
 
 interface Entry {
   id: string
@@ -22,10 +24,45 @@ interface Page {
   nextCursor: string | null
 }
 
+interface Filters {
+  search: string
+  username: string
+  action: string
+  from: string
+  to: string
+}
+
+const emptyFilters = (): Filters => ({
+  search: '',
+  username: '',
+  action: '',
+  from: '',
+  to: '',
+})
+
+const draft = reactive<Filters>(emptyFilters())
+const applied = ref<Filters>(emptyFilters())
+
 const entries = ref<Entry[]>([])
 const cursor = ref<string | null>(null)
 const loading = ref(false)
 const error = ref('')
+
+const usernames = ref<string[]>([])
+const optionsLoading = ref(false)
+const optionsError = ref('')
+
+function normalized(filters: Filters): Filters {
+  return {
+    ...filters,
+    search: filters.search.trim(),
+  }
+}
+
+const filtersChanged = computed(() =>
+  JSON.stringify(normalized(draft)) !==
+  JSON.stringify(applied.value),
+)
 
 const names: Record<string, string> = {
   bezeichnung: 'Name',
@@ -40,8 +77,7 @@ const names: Record<string, string> = {
   lektionen: 'Lektionen',
   farbe: 'Farbe',
   notizen: 'Notizen',
-  anzahl_schultage_woche:
-    'Schultage pro Woche',
+  anzahl_schultage_woche: 'Schultage pro Woche',
   wochentag: 'Wochentag',
   anzahl_raeume: 'Räume',
 }
@@ -54,9 +90,7 @@ function details(
       Object.entries(row)
         .filter(([key]) => names[key])
         .map(([key, value]) =>
-          names[key] +
-          ': ' +
-          (value ?? '–'),
+          names[key] + ': ' + (value ?? '–'),
         )
         .join(' · '),
     )
@@ -64,20 +98,133 @@ function details(
 }
 
 function date(value: string | null) {
-  if (!value) {
-    return 'Zeitpunkt nicht bekannt'
-  }
+  if (!value) return 'Zeitpunkt nicht bekannt'
 
-  return new Intl.DateTimeFormat(
-    'de-CH',
-    {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    },
-  ).format(new Date(value))
+  return new Intl.DateTimeFormat('de-CH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
 }
 
-async function load(more = false) {
+// Die Auswahl gilt in der lokalen Zeitzone des Browsers.
+// Beim Enddatum wird der gesamte gewählte Tag eingeschlossen.
+function dayBoundary(
+  value: string,
+  followingDay = false,
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(
+      'Bitte ein gültiges Datum auswählen.',
+    )
+  }
+
+  const [year, month, day] =
+    value.split('-').map(Number)
+
+  const result = new Date(0)
+
+  result.setFullYear(
+    year!,
+    month! - 1,
+    day!,
+  )
+
+  result.setHours(0, 0, 0, 0)
+
+  if (
+    result.getFullYear() !== year ||
+    result.getMonth() !== month! - 1 ||
+    result.getDate() !== day
+  ) {
+    throw new Error(
+      'Bitte ein gültiges Datum auswählen.',
+    )
+  }
+
+  if (followingDay) {
+    result.setDate(result.getDate() + 1)
+  }
+
+  return result.toISOString()
+}
+
+function queryFor(
+  filters: Filters,
+  next: string | null,
+) {
+  if (
+    filters.from &&
+    filters.to &&
+    filters.from > filters.to
+  ) {
+    throw new Error(
+      'Das Enddatum darf nicht vor dem Startdatum liegen.',
+    )
+  }
+
+  const query = new URLSearchParams()
+
+  if (filters.search) {
+    query.set('q', filters.search)
+  }
+
+  if (filters.username) {
+    query.set('username', filters.username)
+  }
+
+  if (filters.action) {
+    query.set('action', filters.action)
+  }
+
+  if (filters.from) {
+    query.set(
+      'from',
+      dayBoundary(filters.from),
+    )
+  }
+
+  if (filters.to) {
+    query.set(
+      'until',
+      dayBoundary(filters.to, true),
+    )
+  }
+
+  if (next) {
+    query.set('before', next)
+  }
+
+  return query.size
+    ? '?' + query.toString()
+    : ''
+}
+
+async function loadUsers() {
+  if (optionsLoading.value) return
+
+  optionsLoading.value = true
+  optionsError.value = ''
+
+  try {
+    const result = await request<{
+      usernames: string[]
+    }>('/logs/filter-options')
+
+    usernames.value = result.usernames
+  } catch (cause) {
+    optionsError.value =
+      cause instanceof Error
+        ? cause.message
+        : 'Benutzerliste konnte nicht geladen werden.'
+  } finally {
+    optionsLoading.value = false
+  }
+}
+
+async function load(
+  filters: Filters,
+  more = false,
+) {
   if (loading.value) return
 
   const next = more
@@ -86,28 +233,35 @@ async function load(more = false) {
 
   if (more && !next) return
 
-  loading.value = true
   error.value = ''
+
+  const selection = normalized(filters)
+  let query: string
+
+  try {
+    query = queryFor(selection, next)
+  } catch (cause) {
+    error.value =
+      cause instanceof Error
+        ? cause.message
+        : 'Bitte die Filter prüfen.'
+
+    return
+  }
+
+  loading.value = true
 
   try {
     const result = await request<Page>(
-      '/logs' +
-      (
-        next
-          ? '?before=' +
-          encodeURIComponent(next)
-          : ''
-      ),
+      '/logs' + query,
     )
 
     entries.value = more
-      ? [
-        ...entries.value,
-        ...result.entries,
-      ]
+      ? [...entries.value, ...result.entries]
       : result.entries
 
     cursor.value = result.nextCursor
+    applied.value = selection
   } catch (cause) {
     error.value =
       cause instanceof Error
@@ -118,17 +272,33 @@ async function load(more = false) {
   }
 }
 
-onMounted(() => load())
+async function applyFilters() {
+  await load(draft)
+}
+
+async function resetFilters() {
+  if (loading.value) return
+
+  Object.assign(draft, emptyFilters())
+
+  await load(draft)
+}
+
+async function refresh() {
+  await Promise.all([
+    load(applied.value),
+    loadUsers(),
+  ])
+}
+
+onMounted(() => refresh())
 </script>
 
 <template>
   <div class="page-shell page-logs">
     <header class="site-header">
       <div class="header-inner">
-        <RouterLink
-          to="/home"
-          class="brand"
-        >
+        <RouterLink to="/home" class="brand">
           Lehr<span>way</span>
         </RouterLink>
 
@@ -136,24 +306,15 @@ onMounted(() => load())
           class="site-nav"
           aria-label="Hauptnavigation"
         >
-          <RouterLink
-            to="/home"
-            class="nav-link"
-          >
+          <RouterLink to="/home" class="nav-link">
             Wochenplan
           </RouterLink>
 
-          <RouterLink
-            to="/lehrgang"
-            class="nav-link"
-          >
+          <RouterLink to="/lehrgang" class="nav-link">
             Lehrgänge
           </RouterLink>
 
-          <RouterLink
-            to="/logs"
-            class="nav-link"
-          >
+          <RouterLink to="/logs" class="nav-link">
             Logs
           </RouterLink>
         </nav>
@@ -179,11 +340,134 @@ onMounted(() => load())
           <button
             type="button"
             :disabled="loading"
-            @click="load()"
+            @click="refresh()"
           >
             Aktualisieren
           </button>
         </div>
+
+        <form
+          class="log-filters"
+          @submit.prevent="applyFilters"
+        >
+          <div class="filter-field">
+            <label for="log-search">Suche</label>
+
+            <input
+              id="log-search"
+              v-model="draft.search"
+              type="search"
+              maxlength="120"
+              placeholder="Zum Beispiel D24a oder IMS"
+              :disabled="loading"
+            >
+          </div>
+
+          <div class="filter-field">
+            <label for="log-user">Benutzer</label>
+
+            <select
+              id="log-user"
+              v-model="draft.username"
+              :disabled="loading || optionsLoading"
+            >
+              <option value="">Alle Benutzer</option>
+
+              <option
+                v-for="username in usernames"
+                :key="username"
+                :value="username"
+              >
+                {{ username }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filter-field">
+            <label for="log-action">
+              Änderungsart
+            </label>
+
+            <select
+              id="log-action"
+              v-model="draft.action"
+              :disabled="loading"
+            >
+              <option value="">Alle Änderungen</option>
+              <option value="hinzugefügt">Hinzugefügt</option>
+              <option value="geändert">Geändert</option>
+              <option value="entfernt">Entfernt</option>
+            </select>
+          </div>
+
+          <div class="filter-field">
+            <label for="log-from">Von</label>
+
+            <input
+              id="log-from"
+              v-model="draft.from"
+              type="date"
+              :disabled="loading"
+            >
+          </div>
+
+          <div class="filter-field">
+            <label for="log-to">
+              Bis einschließlich
+            </label>
+
+            <input
+              id="log-to"
+              v-model="draft.to"
+              type="date"
+              :disabled="loading"
+            >
+          </div>
+
+          <div class="filter-actions">
+            <button
+              type="submit"
+              class="primary-button"
+              :disabled="loading"
+            >
+              Filter anwenden
+            </button>
+
+            <button
+              type="button"
+              :disabled="loading"
+              @click="resetFilters"
+            >
+              Zurücksetzen
+            </button>
+          </div>
+        </form>
+
+        <p
+          v-if="optionsError"
+          class="error-message"
+          role="alert"
+        >
+          {{ optionsError }}
+
+          <button
+            type="button"
+            :disabled="optionsLoading"
+            @click="loadUsers"
+          >
+            Erneut versuchen
+          </button>
+        </p>
+
+        <p
+          v-if="filtersChanged"
+          class="filter-note"
+          role="status"
+        >
+          Filter geändert. Klicke auf „Filter anwenden“,
+          um die Auswahl zu übernehmen.
+          Die Liste zeigt noch die zuletzt geladene Auswahl.
+        </p>
 
         <p
           v-if="error"
@@ -193,10 +477,7 @@ onMounted(() => load())
           {{ error }}
         </p>
 
-        <p
-          v-if="loading"
-          role="status"
-        >
+        <p v-if="loading" role="status">
           Änderungen werden geladen …
         </p>
 
@@ -207,7 +488,20 @@ onMounted(() => load())
             !entries.length
           "
         >
-          Noch keine Änderungen vorhanden.
+          Keine Einträge für diese Auswahl gefunden.
+        </p>
+
+        <p
+          v-if="!loading && entries.length"
+          class="filter-note"
+          role="status"
+        >
+          {{ entries.length }}
+          {{
+            entries.length === 1
+              ? 'Eintrag geladen'
+              : 'Einträge geladen'
+          }}
         </p>
 
         <ol class="log-list">
@@ -217,14 +511,11 @@ onMounted(() => load())
             class="log-entry"
           >
             <div class="log-meta">
-              <strong>
-                {{ entry.username }}
-              </strong>
+              <strong>{{ entry.username }}</strong>
 
               <time
                 :datetime="
-                  entry.createdAt ||
-                  undefined
+                  entry.createdAt || undefined
                 "
               >
                 {{ date(entry.createdAt) }}
@@ -241,14 +532,11 @@ onMounted(() => load())
                 entry.after.length
               "
             >
-              <summary>
-                Änderung ansehen
-              </summary>
+              <summary>Änderung ansehen</summary>
 
               <div class="log-comparison">
                 <div>
                   <h3>Vorher</h3>
-
                   <p>
                     {{
                       details(entry.before) ||
@@ -259,7 +547,6 @@ onMounted(() => load())
 
                 <div>
                   <h3>Nachher</h3>
-
                   <p>
                     {{
                       details(entry.after) ||
@@ -276,7 +563,7 @@ onMounted(() => load())
           v-if="cursor"
           type="button"
           :disabled="loading"
-          @click="load(true)"
+          @click="load(applied, true)"
         >
           Weitere Änderungen laden
         </button>
@@ -306,6 +593,62 @@ onMounted(() => load())
 
 .log-heading h2 {
   margin: 0;
+}
+
+.log-filters {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0 18px;
+  padding: 20px;
+  border: 1px solid #dfe6df;
+  border-radius: 14px;
+  background: #f7f9f6;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.filter-field label {
+  color: #52665c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.page-logs .filter-field input,
+.page-logs .filter-field select {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-logs .filter-actions button {
+  width: auto;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.filter-note {
+  color: #61706b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .log-list {
@@ -370,6 +713,13 @@ onMounted(() => load())
   line-height: 1.7;
 }
 
+@media (max-width: 800px) {
+  .log-filters {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 600px) {
   .log-comparison {
     grid-template-columns: 1fr;
@@ -377,6 +727,13 @@ onMounted(() => load())
 
   .log-main {
     padding-inline: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .log-filters {
+    grid-template-columns: 1fr;
+    padding: 14px;
   }
 }
 </style>

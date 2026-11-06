@@ -601,19 +601,17 @@ onMounted(loadData)
           class="site-nav"
           aria-label="Hauptnavigation"
         >
-          <router-link
-            to="/home"
-            class="nav-link"
-          >
+          <RouterLink to="/home" class="nav-link">
             Wochenplan
-          </router-link>
+          </RouterLink>
 
-          <router-link
-            to="/lehrgang"
-            class="nav-link"
-          >
+          <RouterLink to="/lehrgang" class="nav-link">
             Lehrgänge
-          </router-link>
+          </RouterLink>
+
+          <RouterLink to="/logs" class="nav-link">
+            Logs
+          </RouterLink>
         </nav>
 
         <UserMenu />

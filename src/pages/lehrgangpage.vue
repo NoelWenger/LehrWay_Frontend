@@ -513,14 +513,21 @@ onMounted(loadCourses)
           Lehr<span>way</span>
         </router-link>
 
-        <nav class="site-nav" aria-label="Hauptnavigation">
-          <router-link to="/home" class="nav-link">
+        <nav
+          class="site-nav"
+          aria-label="Hauptnavigation"
+        >
+          <RouterLink to="/home" class="nav-link">
             Wochenplan
-          </router-link>
+          </RouterLink>
 
-          <router-link to="/lehrgang" class="nav-link">
+          <RouterLink to="/lehrgang" class="nav-link">
             Lehrgänge
-          </router-link>
+          </RouterLink>
+
+          <RouterLink to="/logs" class="nav-link">
+            Logs
+          </RouterLink>
         </nav>
 
         <UserMenu />
