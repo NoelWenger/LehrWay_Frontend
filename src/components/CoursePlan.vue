@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import CourseFieldEditor from '@/components/CourseFieldEditor.vue'
 
 import type {
@@ -21,17 +21,39 @@ const props = defineProps<{
 const emit = defineEmits<{
   'add-module': [name: string]
   'remove-module': [module: CourseModule]
+  'rename-module': [
+    update: {
+      moduleId: number
+      name: string
+    },
+  ]
   'add-field': [field: NewCourseField]
   'save-field': [field: CourseFieldUpdate]
   'remove-field': [fieldId: number]
   'move-field': [field: CourseFieldMove]
 }>()
 
-const quarters = Array.from({ length: 12 }, (_, i) => i + 1)
+const quarterCount = computed(
+  () => props.course.semesteranzahl * 2,
+)
+
+const schoolYears = computed(
+  () => Math.ceil(props.course.semesteranzahl / 2),
+)
+
+const quarters = computed(() =>
+  Array.from(
+    { length: quarterCount.value },
+    (_, index) => index + 1,
+  ),
+)
 
 const showModuleForm = ref(false)
 const newModuleName = ref('')
 const moduleNameInput = ref<HTMLInputElement | null>(null)
+
+const editingModuleId = ref<number | null>(null)
+const editedModuleName = ref('')
 
 const editingFieldId = ref<number | null>(null)
 const localError = ref('')
@@ -52,35 +74,46 @@ const dropTarget = ref<{
   valid: boolean
 } | null>(null)
 
-// Nach einer erfolgreich gespeicherten Planänderung
-// werden offene Eingaben und Auswahlen geschlossen.
 watch(
   () => props.successVersion,
   () => {
+    editingModuleId.value = null
     showModuleForm.value = false
     newModuleName.value = ''
     editingFieldId.value = null
     selection.value = null
     localError.value = ''
+
     clearDrag()
   },
 )
 
-function getFieldAtStart(module: CourseModule, quarter: number) {
+function getFieldAtStart(
+  module: CourseModule,
+  quarter: number,
+) {
   return module.fields.find(
     field => field.startQuarter === quarter,
   )
 }
 
-function getFieldAtQuarter(module: CourseModule, quarter: number) {
-  return module.fields.find(field =>
-    quarter >= field.startQuarter &&
-    quarter < field.startQuarter + field.quarterSpan,
+function getFieldAtQuarter(
+  module: CourseModule,
+  quarter: number,
+) {
+  return module.fields.find(
+    field =>
+      quarter >= field.startQuarter &&
+      quarter < field.startQuarter + field.quarterSpan,
   )
 }
 
-function shouldRenderQuarter(module: CourseModule, quarter: number) {
+function shouldRenderQuarter(
+  module: CourseModule,
+  quarter: number,
+) {
   const field = getFieldAtQuarter(module, quarter)
+
   return !field || field.startQuarter === quarter
 }
 
@@ -90,7 +123,13 @@ function rangeAvailable(
   end: number,
   ignoredId: number | null = null,
 ) {
-  if (start < 1 || end > 12 || end < start) return false
+  if (
+    start < 1 ||
+    end > quarterCount.value ||
+    end < start
+  ) {
+    return false
+  }
 
   return !module.fields.some(field => {
     if (field.id === ignoredId) return false
@@ -118,7 +157,10 @@ async function openModuleForm() {
 
   await nextTick()
 
-  moduleNameInput.value?.focus({ preventScroll: true })
+  moduleNameInput.value?.focus({
+    preventScroll: true,
+  })
+
   moduleNameInput.value?.scrollIntoView({
     behavior: 'smooth',
     block: 'nearest',
@@ -148,7 +190,9 @@ function addModule() {
 
   if (
     props.course.modules.some(
-      module => module.name.trim().toLowerCase() === name.toLowerCase(),
+      module =>
+        module.name.trim().toLowerCase() ===
+        name.toLowerCase(),
     )
   ) {
     localError.value = 'Dieses Modul existiert bereits.'
@@ -158,7 +202,48 @@ function addModule() {
   emit('add-module', name)
 }
 
-function selectQuarter(module: CourseModule, quarter: number) {
+function openModuleEditor(module: CourseModule) {
+  if (props.busy) return
+
+  editingModuleId.value = module.id
+  editedModuleName.value = module.name
+  localError.value = ''
+}
+
+function saveModuleName(module: CourseModule) {
+  if (props.busy) return
+
+  const name = editedModuleName.value.trim()
+  localError.value = ''
+
+  if (!name || Array.from(name).length > 50) {
+    localError.value =
+      'Bitte einen Modulnamen mit 1 bis 50 Zeichen eingeben.'
+    return
+  }
+
+  if (
+    props.course.modules.some(
+      other =>
+        other.id !== module.id &&
+        other.name.trim().toLowerCase() ===
+        name.toLowerCase(),
+    )
+  ) {
+    localError.value = 'Dieses Modul existiert bereits.'
+    return
+  }
+
+  emit('rename-module', {
+    moduleId: module.id,
+    name,
+  })
+}
+
+function selectQuarter(
+  module: CourseModule,
+  quarter: number,
+) {
   if (
     props.busy ||
     dragged.value ||
@@ -171,16 +256,27 @@ function selectQuarter(module: CourseModule, quarter: number) {
 
   if (getFieldAtQuarter(module, quarter)) return
 
-  if (!selection.value || selection.value.moduleId !== module.id) {
+  if (
+    !selection.value ||
+    selection.value.moduleId !== module.id
+  ) {
     selection.value = {
       moduleId: module.id,
       startQuarter: quarter,
     }
+
     return
   }
 
-  const start = Math.min(selection.value.startQuarter, quarter)
-  const end = Math.max(selection.value.startQuarter, quarter)
+  const start = Math.min(
+    selection.value.startQuarter,
+    quarter,
+  )
+
+  const end = Math.max(
+    selection.value.startQuarter,
+    quarter,
+  )
 
   if (!rangeAvailable(module, start, end)) {
     localError.value =
@@ -208,9 +304,14 @@ function cancelEditing() {
   localError.value = ''
 }
 
-function isSelectionStart(moduleId: number, quarter: number) {
-  return selection.value?.moduleId === moduleId &&
+function isSelectionStart(
+  moduleId: number,
+  quarter: number,
+) {
+  return (
+    selection.value?.moduleId === moduleId &&
     selection.value?.startQuarter === quarter
+  )
 }
 
 function clearDrag() {
@@ -242,11 +343,17 @@ function startDrag(
   dropTarget.value = null
 
   event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.setData('text/plain', String(field.id))
+  event.dataTransfer.setData(
+    'text/plain',
+    String(field.id),
+  )
 }
 
 function findDraggedField(module: CourseModule) {
-  if (!dragged.value || dragged.value.moduleId !== module.id) {
+  if (
+    !dragged.value ||
+    dragged.value.moduleId !== module.id
+  ) {
     return undefined
   }
 
@@ -260,26 +367,38 @@ function quarterAtPointer(
   module: CourseModule,
   cellStart: number,
 ) {
-  const cell = event.currentTarget as HTMLTableCellElement
+  const cell =
+    event.currentTarget as HTMLTableCellElement
+
   const rect = cell.getBoundingClientRect()
-  const span = getFieldAtStart(module, cellStart)?.quarterSpan ?? 1
+
+  const span =
+    getFieldAtStart(module, cellStart)?.quarterSpan ?? 1
 
   if (rect.width <= 0) return cellStart
 
-  const relative = (event.clientX - rect.left) / rect.width
+  const relative =
+    (event.clientX - rect.left) / rect.width
 
   const offset = Math.max(
     0,
-    Math.min(span - 1, Math.floor(relative * span)),
+    Math.min(
+      span - 1,
+      Math.floor(relative * span),
+    ),
   )
 
   return cellStart + offset
 }
 
-function canDropAt(module: CourseModule, quarter: number) {
+function canDropAt(
+  module: CourseModule,
+  quarter: number,
+) {
   const field = findDraggedField(module)
 
-  return !!field &&
+  return (
+    !!field &&
     !props.busy &&
     rangeAvailable(
       module,
@@ -287,6 +406,7 @@ function canDropAt(module: CourseModule, quarter: number) {
       quarter + field.quarterSpan - 1,
       field.id,
     )
+  )
 }
 
 function dragOver(
@@ -298,7 +418,12 @@ function dragOver(
 
   event.preventDefault()
 
-  const quarter = quarterAtPointer(event, module, cellStart)
+  const quarter = quarterAtPointer(
+    event,
+    module,
+    cellStart,
+  )
+
   const valid = canDropAt(module, quarter)
 
   dropTarget.value = {
@@ -308,16 +433,23 @@ function dragOver(
   }
 
   if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = valid ? 'move' : 'none'
+    event.dataTransfer.dropEffect =
+      valid ? 'move' : 'none'
   }
 }
 
-function dropClass(module: CourseModule, cellStart: number) {
+function dropClass(
+  module: CourseModule,
+  cellStart: number,
+) {
   const target = dropTarget.value
 
-  if (!target || target.moduleId !== module.id) return {}
+  if (!target || target.moduleId !== module.id) {
+    return {}
+  }
 
-  const span = getFieldAtStart(module, cellStart)?.quarterSpan ?? 1
+  const span =
+    getFieldAtStart(module, cellStart)?.quarterSpan ?? 1
 
   const contains =
     target.quarter >= cellStart &&
@@ -339,18 +471,25 @@ function dropField(
   event.preventDefault()
 
   const field = findDraggedField(module)
-  const quarter = quarterAtPointer(event, module, cellStart)
+
+  const quarter = quarterAtPointer(
+    event,
+    module,
+    cellStart,
+  )
 
   if (!field) {
     localError.value =
       'Das Feld kann nur innerhalb derselben Modulzeile verschoben werden.'
+
     clearDrag()
     return
   }
 
   if (!canDropAt(module, quarter)) {
     localError.value =
-      'Der Zielbereich ist belegt oder reicht über Q12 hinaus.'
+      `Der Zielbereich ist belegt oder reicht über Q${quarterCount.value} hinaus.`
+
     clearDrag()
     return
   }
@@ -372,8 +511,8 @@ function dropField(
 
     <p class="help-text">
       Klicke auf ein Lektionenfeld, um die Lektionen und den
-      Quartalsbereich zu bearbeiten. Ziehe ein geschlossenes Feld
-      innerhalb derselben Modulzeile, um es zu verschieben.
+      Quartalsbereich zu bearbeiten. Ziehe ein geschlossenes
+      Feld innerhalb derselben Modulzeile, um es zu verschieben.
       Neue Bereiche legst du über zwei freie Quartale an.
     </p>
 
@@ -390,7 +529,11 @@ function dropField(
     </p>
 
     <div class="table-wrapper">
-      <table>
+      <table
+        :style="{
+          minWidth: `${190 + quarterCount * 72}px`,
+        }"
+      >
         <thead>
         <tr>
           <th rowspan="3">
@@ -410,14 +553,23 @@ function dropField(
             </div>
           </th>
 
-          <th colspan="4">Lehrjahr 1</th>
-          <th colspan="4">Lehrjahr 2</th>
-          <th colspan="4">Lehrjahr 3</th>
+          <th
+            v-for="year in schoolYears"
+            :key="year"
+            :colspan="
+                Math.min(
+                  4,
+                  quarterCount - (year - 1) * 4,
+                )
+              "
+          >
+            Lehrjahr {{ year }}
+          </th>
         </tr>
 
         <tr>
           <th
-            v-for="semester in 6"
+            v-for="semester in course.semesteranzahl"
             :key="semester"
             colspan="2"
           >
@@ -426,16 +578,69 @@ function dropField(
         </tr>
 
         <tr>
-          <th v-for="quarter in quarters" :key="quarter">
+          <th
+            v-for="quarter in quarters"
+            :key="quarter"
+          >
             Q{{ quarter }}
           </th>
         </tr>
         </thead>
 
         <tbody>
-        <tr v-for="module in course.modules" :key="module.id">
+        <tr
+          v-for="module in course.modules"
+          :key="module.id"
+        >
           <th>
-            <div class="module-name">{{ module.name }}</div>
+            <form
+              v-if="editingModuleId === module.id"
+              class="module-form"
+              @submit.prevent="saveModuleName(module)"
+            >
+              <label :for="`module-name-${module.id}`">
+                Modulname
+              </label>
+
+              <input
+                :id="`module-name-${module.id}`"
+                v-model="editedModuleName"
+                type="text"
+                maxlength="50"
+                :disabled="busy"
+                required
+              >
+
+              <button
+                type="submit"
+                class="primary-button"
+                :disabled="busy"
+              >
+                Speichern
+              </button>
+
+              <button
+                type="button"
+                :disabled="busy"
+                @click="editingModuleId = null"
+              >
+                Abbrechen
+              </button>
+            </form>
+
+            <template v-else>
+              <div class="module-name">
+                {{ module.name }}
+              </div>
+
+              <button
+                type="button"
+                :disabled="busy"
+                @click="openModuleEditor(module)"
+              >
+                Bearbeiten
+              </button>
+            </template>
 
             <button
               type="button"
@@ -447,30 +652,47 @@ function dropField(
             </button>
           </th>
 
-          <template v-for="quarter in quarters" :key="quarter">
+          <template
+            v-for="quarter in quarters"
+            :key="quarter"
+          >
             <td
               v-if="shouldRenderQuarter(module, quarter)"
               :colspan="
-                  getFieldAtStart(module, quarter)?.quarterSpan ?? 1
+                  getFieldAtStart(module, quarter)
+                    ?.quarterSpan ?? 1
                 "
               :class="dropClass(module, quarter)"
-              @dragover="dragOver($event, module, quarter)"
-              @drop="dropField($event, module, quarter)"
+              @dragover="
+                  dragOver($event, module, quarter)
+                "
+              @drop="
+                  dropField($event, module, quarter)
+                "
             >
-              <template v-if="getFieldAtStart(module, quarter)">
+              <template
+                v-if="getFieldAtStart(module, quarter)"
+              >
                 <CourseFieldEditor
                   v-if="
                       editingFieldId ===
                       getFieldAtStart(module, quarter)!.id
                     "
-                  :key="getFieldAtStart(module, quarter)!.id"
-                  :field="getFieldAtStart(module, quarter)!"
+                  :key="
+                      getFieldAtStart(module, quarter)!.id
+                    "
+                  :field="
+                      getFieldAtStart(module, quarter)!
+                    "
                   :module="module"
+                  :quarter-count="quarterCount"
                   :busy="busy"
                   :error="error"
                   @save="emit('save-field', $event)"
                   @cancel="cancelEditing"
-                  @delete="emit('remove-field', $event)"
+                  @delete="
+                      emit('remove-field', $event)
+                    "
                 />
 
                 <button
@@ -488,7 +710,9 @@ function dropField(
                     "
                   title="Klicken zum Bearbeiten, ziehen zum Verschieben"
                   @click="
-                      editField(getFieldAtStart(module, quarter)!)
+                      editField(
+                        getFieldAtStart(module, quarter)!,
+                      )
                     "
                   @dragstart="
                       startDrag(
@@ -500,7 +724,10 @@ function dropField(
                   @dragend="clearDrag"
                 >
                     <span>
-                      {{ getFieldAtStart(module, quarter)!.lessons }}
+                      {{
+                        getFieldAtStart(module, quarter)!
+                          .lessons
+                      }}
                       Lektionen
                     </span>
 
@@ -519,13 +746,20 @@ function dropField(
                 type="button"
                 class="quarter-button"
                 :class="{
-                    selected: isSelectionStart(module.id, quarter),
+                    selected:
+                      isSelectionStart(module.id, quarter),
                   }"
-                :disabled="busy || editingFieldId !== null"
-                @click="selectQuarter(module, quarter)"
+                :disabled="
+                    busy || editingFieldId !== null
+                  "
+                @click="
+                    selectQuarter(module, quarter)
+                  "
               >
                 {{
-                  isSelectionStart(module.id, quarter) ? '●' : '+'
+                  isSelectionStart(module.id, quarter)
+                    ? '●'
+                    : '+'
                 }}
               </button>
             </td>
@@ -542,7 +776,9 @@ function dropField(
               class="module-form"
               @submit.prevent="addModule"
             >
-              <label for="new-module-name">Neues Modul</label>
+              <label for="new-module-name">
+                Neues Modul
+              </label>
 
               <input
                 id="new-module-name"
@@ -558,7 +794,9 @@ function dropField(
               <button
                 type="submit"
                 class="primary-button"
-                :disabled="busy || !newModuleName.trim()"
+                :disabled="
+                    busy || !newModuleName.trim()
+                  "
               >
                 Modul speichern
               </button>
@@ -573,7 +811,10 @@ function dropField(
             </form>
           </td>
 
-          <td :colspan="quarters.length" class="placeholder">
+          <td
+            :colspan="quarters.length"
+            class="placeholder"
+          >
             Gib links den Modulnamen ein und klicke auf
             „Modul speichern“.
           </td>
@@ -582,14 +823,20 @@ function dropField(
       </table>
     </div>
 
-    <p v-if="course.modules.length === 0 && !showModuleForm">
+    <p
+      v-if="
+        course.modules.length === 0 &&
+        !showModuleForm
+      "
+    >
       Noch keine Module vorhanden.
     </p>
 
     <div v-if="selection" class="notice">
       <p>
-        Startquartal Q{{ selection.startQuarter }} ausgewählt.
-        Wähle ein zweites freies Quartal im gleichen Modul.
+        Startquartal Q{{ selection.startQuarter }}
+        ausgewählt. Wähle ein zweites freies Quartal
+        im gleichen Modul.
       </p>
 
       <button
@@ -601,7 +848,11 @@ function dropField(
       </button>
     </div>
 
-    <p v-if="localError" class="error-message" role="alert">
+    <p
+      v-if="localError"
+      class="error-message"
+      role="alert"
+    >
       {{ localError }}
     </p>
 
@@ -614,4 +865,3 @@ function dropField(
     </p>
   </section>
 </template>
-

@@ -55,7 +55,10 @@ const successVersion = ref(0)
 const showCreateCourse = ref(false)
 const newCourseName = ref('')
 const newCourseSemesters = ref(6)
+
 const editedCourseName = ref('')
+const editedCourseSemesters = ref(6)
+
 const createCourseError = ref('')
 const editCourseError = ref('')
 
@@ -159,7 +162,11 @@ function selectCourse(id: number) {
   if (busy.value) return
 
   selectedCourseId.value = id
+
   editedCourseName.value = selectedCourse.value?.name ?? ''
+  editedCourseSemesters.value =
+    selectedCourse.value?.semesteranzahl ?? 6
+
   editCourseError.value = ''
   planError.value = ''
 }
@@ -178,7 +185,8 @@ async function createCourse() {
 
   if (
     courses.value.some(
-      course => course.name.trim().toLowerCase() === name.toLowerCase(),
+      course =>
+        course.name.trim().toLowerCase() === name.toLowerCase(),
     )
   ) {
     createCourseError.value = 'Dieser Lehrgang existiert bereits.'
@@ -242,10 +250,17 @@ async function renameCourse() {
   try {
     await request(
       `/lehrgaenge/${course.id}`,
-      json('PUT', { bezeichnung: name }),
+      json('PUT', {
+        bezeichnung: name,
+        semesteranzahl: editedCourseSemesters.value,
+      }),
     )
 
     course.name = name
+    course.semesteranzahl = editedCourseSemesters.value
+
+    successVersion.value += 1
+
     await loadCourses()
   } catch (error) {
     editCourseError.value = getError(error)
@@ -288,10 +303,6 @@ async function deleteCourse() {
   }
 }
 
-// --------------------------------------------------
-// Aktionen aus CoursePlan speichern
-// --------------------------------------------------
-
 async function savePlanChange(
   operation: () => Promise<void>,
 ) {
@@ -304,13 +315,12 @@ async function savePlanChange(
     await operation()
     await loadCourses()
 
-    // CoursePlan schließt danach erfolgreiche Eingaben.
     successVersion.value += 1
   } catch (error) {
     planError.value = getError(error)
 
-    // Bei teilweise ausgeführten Modul-Löschungen
-    // den tatsächlichen Datenbankstand erneut laden.
+    // Zeigt auch nach teilweise ausgeführten Löschungen
+    // wieder den tatsächlichen Datenbankstand.
     await loadCourses()
   } finally {
     saving.value = false
@@ -334,6 +344,20 @@ async function addModule(name: string) {
   })
 }
 
+async function renameModule(update: {
+  moduleId: number
+  name: string
+}) {
+  await savePlanChange(async () => {
+    await request(
+      `/lehrgang-module/${update.moduleId}/name`,
+      json('PATCH', {
+        bezeichnung: update.name,
+      }),
+    )
+  })
+}
+
 async function removeModule(module: CourseModule) {
   if (busy.value) return
 
@@ -350,7 +374,10 @@ async function removeModule(module: CourseModule) {
 
   await savePlanChange(async () => {
     for (const field of [...module.fields]) {
-      await request(`/lehrgang-module/${field.id}`, json('DELETE'))
+      await request(
+        `/lehrgang-module/${field.id}`,
+        json('DELETE'),
+      )
 
       module.fields = module.fields.filter(
         entry => entry.id !== field.id,
@@ -428,7 +455,10 @@ async function removeField(fieldId: number) {
   if (!confirmed) return
 
   await savePlanChange(async () => {
-    await request(`/lehrgang-module/${fieldId}`, json('DELETE'))
+    await request(
+      `/lehrgang-module/${fieldId}`,
+      json('DELETE'),
+    )
 
     const course = selectedCourse.value
 
@@ -475,8 +505,8 @@ async function moveField(move: CourseFieldMove) {
 onMounted(loadCourses)
 </script>
 
-  <template>
-    <div class="page-shell page-course">
+<template>
+  <div class="page-shell page-course">
     <header class="site-header">
       <div class="header-inner">
         <router-link to="/home" class="brand">
@@ -569,7 +599,11 @@ onMounted(loadCourses)
             Abbrechen
           </button>
 
-          <p v-if="createCourseError" class="error" role="alert">
+          <p
+            v-if="createCourseError"
+            class="error"
+            role="alert"
+          >
             {{ createCourseError }}
           </p>
         </form>
@@ -583,11 +617,16 @@ onMounted(loadCourses)
         >
 
         <ul class="item-list">
-          <li v-for="course in filteredCourses" :key="course.id">
+          <li
+            v-for="course in filteredCourses"
+            :key="course.id"
+          >
             <button
               type="button"
               class="list-button"
-              :class="{ selected: selectedCourseId === course.id }"
+              :class="{
+                selected: selectedCourseId === course.id,
+              }"
               :disabled="busy"
               @click="selectCourse(course.id)"
             >
@@ -607,7 +646,10 @@ onMounted(loadCourses)
         <template v-if="selectedCourse">
           <h3>{{ selectedCourse.name }}</h3>
 
-          <form class="form-stack" @submit.prevent="renameCourse">
+          <form
+            class="form-stack"
+            @submit.prevent="renameCourse"
+          >
             <label for="course-name">Lehrgangsname</label>
 
             <input
@@ -619,15 +661,53 @@ onMounted(loadCourses)
               required
             >
 
+            <label for="edit-course-semesters">
+              Anzahl Semester
+            </label>
+
+            <select
+              id="edit-course-semesters"
+              v-model.number="editedCourseSemesters"
+              :disabled="busy"
+            >
+              <option :value="2">
+                2 Semester · 1 Schuljahr
+              </option>
+
+              <option :value="4">
+                4 Semester · 2 Schuljahre
+              </option>
+
+              <option :value="6">
+                6 Semester · 3 Schuljahre
+              </option>
+
+              <option
+                v-if="
+                  ![2, 4, 6].includes(
+                    selectedCourse.semesteranzahl,
+                  )
+                "
+                :value="selectedCourse.semesteranzahl"
+              >
+                {{ selectedCourse.semesteranzahl }}
+                Semester (bestehend)
+              </option>
+            </select>
+
             <button
               type="submit"
               class="primary-button"
               :disabled="busy"
             >
-              Namen speichern
+              Änderungen speichern
             </button>
 
-            <p v-if="editCourseError" class="error" role="alert">
+            <p
+              v-if="editCourseError"
+              class="error"
+              role="alert"
+            >
               {{ editCourseError }}
             </p>
           </form>
@@ -642,6 +722,7 @@ onMounted(loadCourses)
             :success-version="successVersion"
             @add-module="addModule"
             @remove-module="removeModule"
+            @rename-module="renameModule"
             @add-field="addField"
             @save-field="saveField"
             @remove-field="removeField"

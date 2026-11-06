@@ -10,6 +10,7 @@ import type {
 const props = defineProps<{
   field: CourseField
   module: CourseModule
+  quarterCount: number
   busy: boolean
   error: string
 }>()
@@ -20,12 +21,20 @@ const emit = defineEmits<{
   delete: [fieldId: number]
 }>()
 
-const quarters = Array.from({ length: 12 }, (_, i) => i + 1)
+const quarters = computed(() =>
+  Array.from(
+    { length: props.quarterCount },
+    (_, index) => index + 1,
+  ),
+)
 
 const lessons = ref(props.field.lessons)
 const startQuarter = ref(props.field.startQuarter)
+
 const endQuarter = ref(
-  props.field.startQuarter + props.field.quarterSpan - 1,
+  props.field.startQuarter +
+  props.field.quarterSpan -
+  1,
 )
 
 const showRangeEditor = ref(false)
@@ -36,7 +45,7 @@ function rangeAvailable(start: number, end: number) {
     !Number.isInteger(start) ||
     !Number.isInteger(end) ||
     start < 1 ||
-    end > 12 ||
+    end > props.quarterCount ||
     end < start
   ) {
     return false
@@ -53,21 +62,28 @@ function rangeAvailable(start: number, end: number) {
 }
 
 const startOptions = computed(() =>
-  quarters.map(quarter => ({
+  quarters.value.map(quarter => ({
     quarter,
-    available: rangeAvailable(quarter, endQuarter.value),
+    available: rangeAvailable(
+      quarter,
+      endQuarter.value,
+    ),
   })),
 )
 
 const endOptions = computed(() =>
-  quarters.map(quarter => ({
+  quarters.value.map(quarter => ({
     quarter,
-    available: rangeAvailable(startQuarter.value, quarter),
+    available: rangeAvailable(
+      startQuarter.value,
+      quarter,
+    ),
   })),
 )
 
 const rangeText = computed(() => {
-  const count = endQuarter.value - startQuarter.value + 1
+  const count =
+    endQuarter.value - startQuarter.value + 1
 
   return count === 1
     ? `Q${startQuarter.value} · 1 Quartal`
@@ -84,13 +100,19 @@ function save() {
     lessons.value < 0 ||
     lessons.value > 2147483647
   ) {
-    localError.value = 'Bitte eine gültige Lektionszahl eingeben.'
+    localError.value =
+      'Bitte eine gültige Lektionszahl eingeben.'
     return
   }
 
-  if (!rangeAvailable(startQuarter.value, endQuarter.value)) {
+  if (
+    !rangeAvailable(
+      startQuarter.value,
+      endQuarter.value,
+    )
+  ) {
     localError.value =
-      'Bitte einen freien Bereich innerhalb von Q1 bis Q12 auswählen.'
+      `Bitte einen freien Bereich innerhalb von Q1 bis Q${props.quarterCount} auswählen.`
     return
   }
 
@@ -104,7 +126,10 @@ function save() {
 </script>
 
 <template>
-  <form class="lesson-editor" @submit.prevent="save">
+  <form
+    class="lesson-editor"
+    @submit.prevent="save"
+  >
     <label :for="`lessons-${field.id}`">
       Lektionen gesamt
     </label>
@@ -130,7 +155,10 @@ function save() {
       Quartale verbinden / Länge ändern
     </button>
 
-    <div v-if="showRangeEditor" class="range-editor">
+    <div
+      v-if="showRangeEditor"
+      class="range-editor"
+    >
       <label :for="`range-start-${field.id}`">
         Von Quartal:
       </label>
@@ -147,7 +175,11 @@ function save() {
           :disabled="!option.available"
         >
           Q{{ option.quarter }}
-          {{ option.available ? '' : '– nicht verfügbar' }}
+          {{
+            option.available
+              ? ''
+              : '– nicht verfügbar'
+          }}
         </option>
       </select>
 
@@ -167,11 +199,17 @@ function save() {
           :disabled="!option.available"
         >
           Q{{ option.quarter }}
-          {{ option.available ? '' : '– nicht verfügbar' }}
+          {{
+            option.available
+              ? ''
+              : '– nicht verfügbar'
+          }}
         </option>
       </select>
 
-      <p class="range-preview">{{ rangeText }}</p>
+      <p class="range-preview">
+        {{ rangeText }}
+      </p>
     </div>
 
     <button
@@ -208,4 +246,3 @@ function save() {
     </p>
   </form>
 </template>
-
