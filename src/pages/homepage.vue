@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
+
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import WeeklySchedule from '@/components/WeeklySchedule.vue'
 import ClassEditor from '@/components/ClassEditor.vue'
+import ClassEditorDrawer from '@/components/ClassEditorDrawer.vue'
+
 import { confirmAction } from '@/composables/useConfirm'
 
 import type {
@@ -53,6 +56,7 @@ const labels = ref<ClassLabel[]>([])
 
 const searchQuery = ref('')
 const selectedClassId = ref<number | null>(null)
+const showClassEditor = ref(false)
 
 const loading = ref(false)
 const saving = ref(false)
@@ -70,11 +74,14 @@ const newClassName = ref('')
 const selectedCourseId = ref<number | null>(null)
 
 const currentYear = new Date().getFullYear()
+
 const schoolYear =
   `${currentYear}/${String(currentYear + 1).slice(-2)}`
 
 const busy = computed(() =>
-  loading.value || saving.value || labelSaving.value,
+  loading.value ||
+  saving.value ||
+  labelSaving.value,
 )
 
 const selectedClass = computed(() =>
@@ -110,6 +117,10 @@ function normalizeColor(value: unknown) {
     : '#0d6efd'
 }
 
+// --------------------------------------------------
+// Labels laden
+// --------------------------------------------------
+
 async function loadLabels() {
   if (labelsLoading.value) return
 
@@ -117,10 +128,14 @@ async function loadLabels() {
   labelLoadError.value = ''
 
   try {
-    const rows = await request<ClassLabel[]>('/klasse-labels')
+    const rows = await request<ClassLabel[]>(
+      '/klasse-labels',
+    )
 
     if (!Array.isArray(rows)) {
-      throw new Error('Die API hat keine Label-Liste zurückgegeben.')
+      throw new Error(
+        'Die API hat keine Label-Liste zurückgegeben.',
+      )
     }
 
     const result = new Map<string, ClassLabel>()
@@ -136,7 +151,9 @@ async function loadLabels() {
         labelId <= 0 ||
         typeof row.name !== 'string'
       ) {
-        throw new Error('Die API hat ungültige Label-Daten zurückgegeben.')
+        throw new Error(
+          'Die API hat ungültige Label-Daten zurückgegeben.',
+        )
       }
 
       result.set(`${classId}:${labelId}`, {
@@ -156,6 +173,10 @@ async function loadLabels() {
     labelsLoading.value = false
   }
 }
+
+// --------------------------------------------------
+// Wochenplan laden
+// --------------------------------------------------
 
 async function loadData() {
   if (loading.value) return
@@ -221,6 +242,7 @@ async function loadData() {
       )
     ) {
       selectedClassId.value = null
+      showClassEditor.value = false
     }
   } catch (error) {
     apiError.value = getError(error)
@@ -249,12 +271,28 @@ async function saveChange(
   }
 }
 
+// --------------------------------------------------
+// Klasse auswählen und Sidebar öffnen
+// --------------------------------------------------
+
 function selectClass(id: number) {
   if (busy.value) return
 
   selectedClassId.value = id
   editError.value = ''
+  showClassEditor.value = true
 }
+
+function closeClassEditor() {
+  if (busy.value) return
+
+  // Die Klasse bleibt für die Anzeige ihrer Labels ausgewählt.
+  showClassEditor.value = false
+}
+
+// --------------------------------------------------
+// Klassen verwalten
+// --------------------------------------------------
 
 async function createClass() {
   const name = newClassName.value.trim()
@@ -338,7 +376,10 @@ async function deleteClass() {
   if (!confirmed) return
 
   await saveChange(async () => {
-    await request(`/klassen/${klasse.id}`, json('DELETE'))
+    await request(
+      `/klassen/${klasse.id}`,
+      json('DELETE'),
+    )
 
     classes.value = classes.value.filter(
       entry => entry.id !== klasse.id,
@@ -349,14 +390,28 @@ async function deleteClass() {
     )
 
     selectedClassId.value = null
+    showClassEditor.value = false
   }, message => {
+    editError.value = message
     apiError.value = message
   })
 }
 
-async function toggleSchoolDay(classId: number, day: Weekday) {
-  const klasse = classes.value.find(entry => entry.id === classId)
-  const room = rooms.value.find(entry => entry.day === day)
+// --------------------------------------------------
+// Schultage und Räume
+// --------------------------------------------------
+
+async function toggleSchoolDay(
+  classId: number,
+  day: Weekday,
+) {
+  const klasse = classes.value.find(
+    entry => entry.id === classId,
+  )
+
+  const room = rooms.value.find(
+    entry => entry.day === day,
+  )
 
   if (!klasse || busy.value) return
 
@@ -384,8 +439,14 @@ async function toggleSchoolDay(classId: number, day: Weekday) {
   })
 }
 
-async function changeCapacity(day: Weekday, amount: number) {
-  const room = rooms.value.find(entry => entry.day === day)
+async function changeCapacity(
+  day: Weekday,
+  amount: number,
+) {
+  const room = rooms.value.find(
+    entry => entry.day === day,
+  )
+
   if (!room || busy.value) return
 
   await saveChange(async () => {
@@ -400,6 +461,10 @@ async function changeCapacity(day: Weekday, amount: number) {
   })
 }
 
+// --------------------------------------------------
+// Konfliktregeln
+// --------------------------------------------------
+
 async function addRule(otherId: number) {
   const klasse = selectedClass.value
   if (!klasse || busy.value) return
@@ -410,17 +475,26 @@ async function addRule(otherId: number) {
       klasse_b_id: otherId,
     }))
   }, message => {
+    editError.value = message
     apiError.value = message
   })
 }
 
 async function removeRule(ruleId: number) {
   await saveChange(async () => {
-    await request(`/regeln/${ruleId}`, json('DELETE'))
+    await request(
+      `/regeln/${ruleId}`,
+      json('DELETE'),
+    )
   }, message => {
+    editError.value = message
     apiError.value = message
   })
 }
+
+// --------------------------------------------------
+// Änderungen aus der Label-Komponente übernehmen
+// --------------------------------------------------
 
 function onLabelSaved(assignment: ClassLabel) {
   for (const label of labels.value) {
@@ -476,6 +550,7 @@ onMounted(loadData)
           <router-link to="/home" class="nav-link">
             Wochenplan
           </router-link>
+
           <router-link to="/lehrgang" class="nav-link">
             Lehrgänge
           </router-link>
@@ -491,14 +566,23 @@ onMounted(loadData)
     </div>
 
     <main class="page-main">
-      <p v-if="loading" class="status-message" role="status">
+      <p
+        v-if="loading"
+        class="status-message"
+        role="status"
+      >
         Daten werden geladen...
       </p>
 
-      <p v-if="apiError" class="status-message error" role="alert">
+      <p
+        v-if="apiError"
+        class="status-message error"
+        role="alert"
+      >
         {{ apiError }}
       </p>
 
+      <!-- Klassenübersicht -->
       <aside class="panel">
         <h2>Klassen</h2>
 
@@ -533,6 +617,7 @@ onMounted(loadData)
             <option :value="null" disabled>
               Lehrgang auswählen
             </option>
+
             <option
               v-for="course in courses"
               :key="course.id"
@@ -558,7 +643,11 @@ onMounted(loadData)
             Abbrechen
           </button>
 
-          <p v-if="classError" class="error" role="alert">
+          <p
+            v-if="classError"
+            class="error"
+            role="alert"
+          >
             {{ classError }}
           </p>
         </form>
@@ -572,11 +661,16 @@ onMounted(loadData)
         >
 
         <ul class="item-list">
-          <li v-for="klasse in filteredClasses" :key="klasse.id">
+          <li
+            v-for="klasse in filteredClasses"
+            :key="klasse.id"
+          >
             <button
               type="button"
               class="list-button"
-              :class="{ selected: selectedClassId === klasse.id }"
+              :class="{
+                selected: selectedClassId === klasse.id,
+              }"
               :disabled="busy"
               @click="selectClass(klasse.id)"
             >
@@ -585,11 +679,17 @@ onMounted(loadData)
           </li>
         </ul>
 
-        <p v-if="!loading && filteredClasses.length === 0">
+        <p
+          v-if="
+            !loading &&
+            filteredClasses.length === 0
+          "
+        >
           Keine Klassen gefunden.
         </p>
       </aside>
 
+      <!-- Die Wochenansicht nutzt jetzt den übrigen Platz. -->
       <WeeklySchedule
         class="panel"
         :classes="classes"
@@ -603,9 +703,17 @@ onMounted(loadData)
         @change-capacity="changeCapacity"
         @change-year="changeSchoolYear"
       />
+    </main>
 
+    <!-- Klassenbearbeitung außerhalb des Seitenrasters -->
+    <ClassEditorDrawer
+      :open="showClassEditor && selectedClass !== null"
+      :busy="busy"
+      @close="closeClassEditor"
+    >
       <ClassEditor
-        class="panel class-editor"
+        v-if="selectedClass"
+        class="class-editor"
         :school-class="selectedClass"
         :classes="classes"
         :rules="rules"
@@ -625,9 +733,8 @@ onMounted(loadData)
         @label-color-changed="onLabelColorChanged"
         @label-removed="onLabelRemoved"
       />
-    </main>
+    </ClassEditorDrawer>
 
     <Footer />
   </div>
 </template>
-
