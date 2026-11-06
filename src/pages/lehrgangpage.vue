@@ -581,6 +581,7 @@ onMounted(loadCourses)
             <option :value="2">2 Semester</option>
             <option :value="4">4 Semester</option>
             <option :value="6">6 Semester</option>
+            <option :value="8">8 Semester</option>
           </select>
 
           <button
@@ -670,29 +671,10 @@ onMounted(loadCourses)
               v-model.number="editedCourseSemesters"
               :disabled="busy"
             >
-              <option :value="2">
-                2 Semester · 1 Schuljahr
-              </option>
-
-              <option :value="4">
-                4 Semester · 2 Schuljahre
-              </option>
-
-              <option :value="6">
-                6 Semester · 3 Schuljahre
-              </option>
-
-              <option
-                v-if="
-                  ![2, 4, 6].includes(
-                    selectedCourse.semesteranzahl,
-                  )
-                "
-                :value="selectedCourse.semesteranzahl"
-              >
-                {{ selectedCourse.semesteranzahl }}
-                Semester (bestehend)
-              </option>
+              <option :value="2">2 Semester · 1 Schuljahr</option>
+              <option :value="4">4 Semester · 2 Schuljahre</option>
+              <option :value="6">6 Semester · 3 Schuljahre</option>
+              <option :value="8">8 Semester · 4 Schuljahre</option>
             </select>
 
             <button
