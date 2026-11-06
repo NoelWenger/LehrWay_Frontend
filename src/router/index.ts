@@ -1,44 +1,69 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import {
+  createRouter,
+  createWebHistory,
+} from 'vue-router'
 
 import loginpage from '@/pages/loginpage.vue'
 import registerpage from '@/pages/registerpage.vue'
 import homepage from '@/pages/homepage.vue'
 import lehrgangpage from '@/pages/lehrgangpage.vue'
+import logpage from '@/pages/logpage.vue'
+
+import {
+  loadCurrentUser,
+} from '@/services/auth'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(
+    import.meta.env.BASE_URL,
+  ),
+
   routes: [
     {
       path: '/',
       name: 'login',
-      component: loginpage
+      component: loginpage,
     },
     {
       path: '/register',
       name: 'register',
-      component: registerpage
+      component: registerpage,
     },
     {
       path: '/home',
       name: 'home',
-      component: homepage
+      component: homepage,
     },
     {
       path: '/lehrgang',
       name: 'lehrgang',
-      component: lehrgangpage
-    }
+      component: lehrgangpage,
+    },
+    {
+      path: '/logs',
+      name: 'logs',
+      component: logpage,
+    },
   ],
 })
 
-router.beforeEach((to) => {
-  const publicPages = ['/', '/register']
-  const authRequired = !publicPages.includes(to.path)
+router.beforeEach(async to => {
+  if (
+    to.path === '/' ||
+    to.path === '/register'
+  ) {
+    return
+  }
 
-  const loggedInUser = localStorage.getItem('user')
+  const user = await loadCurrentUser()
 
-  if (authRequired && !loggedInUser) {
-    return '/'
+  if (!user) {
+    return {
+      path: '/',
+      query: {
+        reason: 'session',
+      },
+    }
   }
 })
 
