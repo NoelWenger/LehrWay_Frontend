@@ -31,7 +31,10 @@ const weekdays: Weekday[] = [
   'Freitag',
 ]
 
-function hasSchool(klasse: SchoolClass, day: Weekday) {
+function hasSchool(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
   return klasse.schoolDays.includes(day)
 }
 
@@ -52,95 +55,130 @@ function getRoomCapacity(day: Weekday) {
     room => room.day === day,
   )?.capacity ?? 0
 }
-function getPotentialConflictText(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  // Nur leere Felder prüfen.
-  if (hasSchool(klasse, day)) return ''
 
-  // Betroffene andere Klassen nur einmal zählen.
-  const conflictingClassIds = new Set<number>()
-
-  for (const rule of props.rules) {
-    if (
-      rule.classAId !== klasse.id &&
-      rule.classBId !== klasse.id
-    ) {
-      continue
-    }
-
-    const otherId = getOtherClassId(rule, klasse.id)
-
-    const otherClass = props.classes.find(
-      entry => entry.id === otherId,
-    )
-
-    if (otherClass && hasSchool(otherClass, day)) {
-      conflictingClassIds.add(otherId)
-    }
-  }
-
-  let conflictCount = conflictingClassIds.size
-
-  // Eine zusätzliche Klasse benötigt einen weiteren Raum.
-  // Raumknappheit zählt als eine weitere Konfliktursache.
-  if (getUsedRooms(day) + 1 > getRoomCapacity(day)) {
-    conflictCount += 1
-  }
-
-  if (conflictCount === 0) return ''
-
-  return conflictCount === 1
-    ? 'Es entsteht ein Konflikt'
-    : 'Es entstehen Konflikte'
-}
 function getMissingRooms(day: Weekday) {
-  return getUsedRooms(day) - getRoomCapacity(day)
+  return Math.max(
+    0,
+    getUsedRooms(day) - getRoomCapacity(day),
+  )
 }
 
-function getRoomConflictText(day: Weekday) {
-  const missing = getMissingRooms(day)
-
-  return `${missing} ${missing === 1 ? 'Raum' : 'Räume'} zu wenig`
-}
-
-function getOtherClassId(rule: ClassRule, classId: number) {
-  return rule.classAId === classId
-    ? rule.classBId
-    : rule.classAId
-}
-
+// Prüft die anderen Klassen unabhängig davon,
+// ob der betrachtete Schultag bereits aktiviert ist.
 function getConflictingClasses(
   klasse: SchoolClass,
   day: Weekday,
 ) {
-  if (!hasSchool(klasse, day)) return []
-
   const otherIds = new Set(
     props.rules
       .filter(rule =>
         rule.classAId === klasse.id ||
         rule.classBId === klasse.id,
       )
-      .map(rule => getOtherClassId(rule, klasse.id)),
+      .map(rule =>
+        rule.classAId === klasse.id
+          ? rule.classBId
+          : rule.classAId,
+      ),
   )
 
   return props.classes.filter(other =>
-    otherIds.has(other.id) && hasSchool(other, day),
+    other.id !== klasse.id &&
+    otherIds.has(other.id) &&
+    hasSchool(other, day),
   )
 }
 
-function getConflictText(
+function getCellConflicts(
   klasse: SchoolClass,
   day: Weekday,
 ) {
-  return getConflictingClasses(klasse, day)
-    .map(other =>
-      `${klasse.name} und ${other.name} ` +
-      'dürfen nicht gleichzeitig Schule haben.',
+  const messages = getConflictingClasses(
+    klasse,
+    day,
+  ).map(other =>
+    `${klasse.name} und ${other.name} dürfen am ${day} nicht gleichzeitig Schule haben.`,
+  )
+
+  const active = hasSchool(klasse, day)
+
+  // Bei einem leeren Feld wird die zusätzliche Klasse
+  // für die Vorschau bereits mitgezählt.
+  const used =
+    getUsedRooms(day) + (active ? 0 : 1)
+
+  const missing = Math.max(
+    0,
+    used - getRoomCapacity(day),
+  )
+
+  if (missing > 0) {
+    messages.push(
+      active
+        ? `Am ${day}: ${missing === 1 ? 'Ein Raum' : missing + ' Räume'} zu wenig.`
+        : `Wenn du diesen Schultag aktivierst, ${missing === 1 ? 'fehlt ein Raum' : 'fehlen ' + missing + ' Räume'}.`,
     )
-    .join('\n')
+  }
+
+  return messages
+}
+
+function getConflictHeading(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
+  const count =
+    getCellConflicts(klasse, day).length
+
+  if (hasSchool(klasse, day)) {
+    return count === 1
+      ? 'Konflikt'
+      : 'Konflikte'
+  }
+
+  return count === 1
+    ? 'Möglicher Konflikt'
+    : 'Mögliche Konflikte'
+}
+
+// Der bisherige kurze Hinweis beim Überfahren bleibt erhalten.
+function getPotentialConflictText(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
+  if (hasSchool(klasse, day)) return ''
+
+  const count =
+    getCellConflicts(klasse, day).length
+
+  if (count === 0) return ''
+
+  return count === 1
+    ? 'Es entsteht ein Konflikt'
+    : 'Es entstehen Konflikte'
+}
+
+function getRoomConflictText(day: Weekday) {
+  const missing = getMissingRooms(day)
+
+  return `${
+    missing === 1
+      ? 'Ein Raum'
+      : missing + ' Räume'
+  } zu wenig.`
+}
+
+function getRoomUsageText(day: Weekday) {
+  const used = getUsedRooms(day)
+  const capacity = getRoomCapacity(day)
+
+  return `${day}: ${used} ${
+    used === 1
+      ? 'Klasse benötigt'
+      : 'Klassen benötigen je'
+  } einen Raum. Verfügbar: ${capacity} ${
+    capacity === 1 ? 'Raum' : 'Räume'
+  }.`
 }
 
 function badgeStyle(value: string) {
@@ -169,7 +207,10 @@ function badgeStyle(value: string) {
 
   return {
     backgroundColor: color,
-    color: luminance > 0.179 ? '#000000' : '#ffffff',
+    color:
+      luminance > 0.179
+        ? '#000000'
+        : '#ffffff',
   }
 }
 </script>
@@ -207,6 +248,7 @@ function badgeStyle(value: string) {
         <thead>
         <tr>
           <th scope="col">Klasse</th>
+
           <th
             v-for="day in weekdays"
             :key="day"
@@ -218,12 +260,16 @@ function badgeStyle(value: string) {
         </thead>
 
         <tbody>
-        <tr v-for="klasse in classes" :key="klasse.id">
+        <tr
+          v-for="klasse in classes"
+          :key="klasse.id"
+        >
           <th
             scope="row"
             class="class-name-cell"
             :class="{
-                selected: selectedClassId === klasse.id,
+                selected:
+                  selectedClassId === klasse.id,
               }"
           >
             <span>{{ klasse.name }}</span>
@@ -244,26 +290,73 @@ function badgeStyle(value: string) {
             </div>
           </th>
 
-          <td v-for="day in weekdays" :key="day">
+          <td
+            v-for="day in weekdays"
+            :key="day"
+          >
             <button
               type="button"
               class="school-day-button"
-              :class="{ active: hasSchool(klasse, day) }"
+              :class="{
+                  active: hasSchool(klasse, day),
+                }"
               :disabled="busy"
               :aria-pressed="hasSchool(klasse, day)"
-              :title="getPotentialConflictText(klasse, day)"
-              @click="emit('toggle-day', klasse.id, day)"
+              :aria-label="`${klasse.name}, ${day}: Schultag ${hasSchool(klasse, day) ? 'deaktivieren' : 'aktivieren'}`"
+              :title="
+                  getPotentialConflictText(klasse, day)
+                "
+              @click="
+                  emit('toggle-day', klasse.id, day)
+                "
             >
-              {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
-
-              <span
-                v-if="getConflictingClasses(klasse, day).length"
-                class="conflict"
-                :title="getConflictText(klasse, day)"
-              >
-                  ⚠ Konflikt
-                </span>
+              {{
+                hasSchool(klasse, day)
+                  ? 'Schule'
+                  : '–'
+              }}
             </button>
+
+            <details
+              v-if="
+                  getCellConflicts(klasse, day).length
+                "
+              class="conflict-hint"
+              :class="{
+                  potential:
+                    !hasSchool(klasse, day),
+                }"
+            >
+              <summary
+                :aria-label="`${klasse.name}, ${day}: ${getConflictHeading(klasse, day)} – Erklärung`"
+              >
+                {{
+                  getConflictHeading(klasse, day)
+                }}
+              </summary>
+
+              <div class="conflict-explanation">
+                <p class="hint-context">
+                  {{ klasse.name }} · {{ day }}
+                </p>
+
+                <p v-if="!hasSchool(klasse, day)">
+                  Beim Aktivieren dieses Schultags:
+                </p>
+
+                <ul>
+                  <li
+                    v-for="message in getCellConflicts(
+                        klasse,
+                        day,
+                      )"
+                    :key="message"
+                  >
+                    {{ message }}
+                  </li>
+                </ul>
+              </div>
+            </details>
           </td>
         </tr>
         </tbody>
@@ -272,27 +365,53 @@ function badgeStyle(value: string) {
         <tr>
           <th scope="row">Räume</th>
 
-          <td v-for="day in weekdays" :key="day">
+          <td
+            v-for="day in weekdays"
+            :key="day"
+          >
             <div class="room-controls">
                 <span>
                   {{ getUsedRooms(day) }} /
                   {{ getRoomCapacity(day) }}
                 </span>
 
-              <span
+              <details
                 v-if="getMissingRooms(day) > 0"
-                class="conflict"
-                :title="getRoomConflictText(day)"
+                class="conflict-hint room-hint"
               >
-                  ⚠
-                </span>
+                <summary
+                  :aria-label="`${day}: Raumkonflikt – Erklärung`"
+                >
+                  {{
+                    getMissingRooms(day) === 1
+                      ? 'Raum fehlt'
+                      : 'Räume fehlen'
+                  }}
+                </summary>
+
+                <div class="conflict-explanation">
+                  <p class="hint-context">
+                    {{ day }}
+                  </p>
+
+                  <p>
+                    {{ getRoomUsageText(day) }}
+                  </p>
+
+                  <p>
+                    {{ getRoomConflictText(day) }}
+                  </p>
+                </div>
+              </details>
 
               <div>
                 <button
                   type="button"
                   :disabled="busy"
                   :aria-label="`${day}: Raumanzahl erhöhen`"
-                  @click="emit('change-capacity', day, 1)"
+                  @click="
+                      emit('change-capacity', day, 1)
+                    "
                 >
                   ▲
                 </button>
@@ -300,10 +419,13 @@ function badgeStyle(value: string) {
                 <button
                   type="button"
                   :disabled="
-                      busy || getRoomCapacity(day) === 0
+                      busy ||
+                      getRoomCapacity(day) === 0
                     "
                   :aria-label="`${day}: Raumanzahl verringern`"
-                  @click="emit('change-capacity', day, -1)"
+                  @click="
+                      emit('change-capacity', day, -1)
+                    "
                 >
                   ▼
                 </button>
@@ -317,3 +439,88 @@ function badgeStyle(value: string) {
   </section>
 </template>
 
+<style scoped>
+.schedule .conflict-hint {
+  margin-top: 8px;
+  color: #a13232;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.schedule .conflict-hint.potential {
+  color: #66736e;
+}
+
+.conflict-hint > summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.conflict-hint > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conflict-hint > summary::before {
+  content: '+';
+  flex-shrink: 0;
+}
+
+.conflict-hint[open] > summary::before {
+  content: '−';
+}
+
+.conflict-hint > summary:hover {
+  background: rgb(0 0 0 / 4%);
+}
+
+.conflict-hint > summary:focus-visible {
+  outline: 3px solid #205447;
+  outline-offset: 3px;
+}
+
+.conflict-explanation {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #dfe6df;
+  border-radius: 8px;
+  background: #f6f8f5;
+  color: #34443d;
+  overflow-wrap: anywhere;
+}
+
+.conflict-explanation p {
+  margin: 0 0 8px;
+}
+
+.conflict-explanation p:last-child {
+  margin-bottom: 0;
+}
+
+.conflict-explanation .hint-context {
+  font-weight: 700;
+}
+
+.conflict-explanation ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.conflict-explanation li + li {
+  margin-top: 7px;
+}
+
+.schedule .room-hint {
+  width: 100%;
+  margin-top: 0;
+}
+</style>
