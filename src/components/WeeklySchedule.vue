@@ -229,10 +229,7 @@ function badgeStyle(value: string) {
             <span>{{ klasse.name }}</span>
 
             <div
-              v-if="
-                  selectedClassId === klasse.id &&
-                  getLabels(klasse.id).length
-                "
+              v-if="getLabels(klasse.id).length"
               class="table-labels"
               :aria-label="`Labels von ${klasse.name}`"
             >
