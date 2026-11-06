@@ -462,7 +462,7 @@ onMounted(loadExistingLabels)
           title="Labelfarbe ändern"
           @click="toggleColorEditor(label.label_id)"
         >
-          <span aria-hidden="true">🎨</span>
+          <span class="badge-color-dot" aria-hidden="true"></span>
         </button>
 
         <button
