@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useRouter } from "vue-router";
-import { ref } from "vue";
+import { useRouter } from 'vue-router'
+import { ref } from 'vue'
 import Footer from '@/components/Footer.vue'
 
 const router = useRouter()
@@ -8,17 +8,24 @@ const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
 
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:3000/api'
+).replace(/\/$/, '')
+
 const handleRegister = async () => {
-  if (password.value !== passwordConfirm.value)
-  {
-    alert("Passwort stimmt nicht überein")
+  if (password.value !== passwordConfirm.value) {
+    alert('Passwort stimmt nicht überein')
     return
   }
+
   try {
-    const response = await fetch('http://localhost:3000/api/register', {
+    const response = await fetch(`${API_URL}/register`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        'X-Lehrway-Request': '1',
       },
       body: JSON.stringify({
         email: email.value,
@@ -30,32 +37,27 @@ const handleRegister = async () => {
     console.log('Antwort vom Backend:', data)
 
     if (response.ok && data.success) {
-      alert("Registrierung erfolgreich! Bitte logge dich ein.")
+      alert('Registrierung erfolgreich! Bitte logge dich ein.')
       router.push('/')
     } else {
-      alert(data.message || "Registrierung fehlgeschlagen!")
+      alert(data.message || 'Registrierung fehlgeschlagen!')
     }
   } catch (error) {
-    console.error("Verbindungsfehler:", error)
-    alert("Server ist nicht erreichbar! Läuft dein Backend?")
+    console.error('Verbindungsfehler:', error)
+    alert('Server ist nicht erreichbar! Läuft dein Backend?')
   }
 }
 </script>
 
 <template>
   <div class="page-shell page-auth">
-
-
     <header class="site-header">
       <div class="header-inner">
         <h1 class="brand">
-
-            Lehr<span>way</span>
-
+          Lehr<span>way</span>
         </h1>
       </div>
     </header>
-
 
     <main class="page-main">
       <div class="auth-card">
@@ -64,6 +66,7 @@ const handleRegister = async () => {
         <form @submit.prevent="handleRegister">
           <div class="form-group">
             <label>E-Mail:</label>
+
             <input
               type="email"
               v-model="email"
@@ -74,6 +77,7 @@ const handleRegister = async () => {
 
           <div class="form-group">
             <label>Passwort:</label>
+
             <input
               type="password"
               v-model="password"
@@ -84,6 +88,7 @@ const handleRegister = async () => {
 
           <div class="form-group">
             <label>Passwort wiederholen:</label>
+
             <input
               type="password"
               v-model="passwordConfirm"
@@ -99,6 +104,7 @@ const handleRegister = async () => {
 
         <p class="auth-link">
           Du hast bereits ein Konto?
+
           <RouterLink to="/">
             Hier einloggen
           </RouterLink>
@@ -107,7 +113,5 @@ const handleRegister = async () => {
     </main>
 
     <Footer />
-
   </div>
 </template>
-

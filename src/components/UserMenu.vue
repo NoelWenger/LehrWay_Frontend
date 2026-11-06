@@ -1,13 +1,33 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from 'vue'
+
 import { useRouter } from 'vue-router'
 import { confirmAction } from '@/composables/useConfirm'
 
-const router = useRouter()
-const username = ref('')
-const menu = ref<HTMLDetailsElement | null>(null)
+import {
+  currentUser,
+  logout as endLogin,
+} from '@/services/auth'
 
-let closeTimer: ReturnType<typeof setTimeout> | null = null
+const router = useRouter()
+
+const username = computed(
+  () => currentUser.value?.username ?? '',
+)
+
+const logoutError = ref('')
+
+const menu =
+  ref<HTMLDetailsElement | null>(null)
+
+let closeTimer:
+  ReturnType<typeof setTimeout> |
+  null = null
 
 function cancelClose() {
   if (closeTimer !== null) {
@@ -25,7 +45,6 @@ function closeMenu() {
 }
 
 function scheduleClose(event: PointerEvent) {
-  // Auf Touchscreens bleibt das Menü per Antippen bedienbar.
   if (event.pointerType !== 'mouse') return
 
   cancelClose()
@@ -35,7 +54,9 @@ function scheduleClose(event: PointerEvent) {
   }, 200)
 }
 
-function handleOutsideClick(event: PointerEvent) {
+function handleOutsideClick(
+  event: PointerEvent,
+) {
   const target = event.target
 
   if (
@@ -47,7 +68,9 @@ function handleOutsideClick(event: PointerEvent) {
   }
 }
 
-function handleFocusOut(event: FocusEvent) {
+function handleFocusOut(
+  event: FocusEvent,
+) {
   const nextTarget = event.relatedTarget
 
   if (
@@ -63,40 +86,37 @@ function handleEscape() {
 
   closeMenu()
 
-  menu.value.querySelector('summary')?.focus({
-    preventScroll: true,
-  })
+  menu.value
+    .querySelector('summary')
+    ?.focus({
+      preventScroll: true,
+    })
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', handleOutsideClick)
-
-  try {
-    const storedUser = localStorage.getItem('user')
-
-    if (!storedUser) return
-
-    const user = JSON.parse(storedUser)
-
-    if (typeof user?.username === 'string') {
-      username.value = user.username.trim()
-    }
-  } catch {
-    username.value = ''
-  }
+  document.addEventListener(
+    'pointerdown',
+    handleOutsideClick,
+  )
 })
 
 onBeforeUnmount(() => {
   cancelClose()
-  document.removeEventListener('pointerdown', handleOutsideClick)
+
+  document.removeEventListener(
+    'pointerdown',
+    handleOutsideClick,
+  )
 })
 
 async function logout() {
   closeMenu()
 
-  menu.value?.querySelector('summary')?.focus({
-    preventScroll: true,
-  })
+  menu.value
+    ?.querySelector('summary')
+    ?.focus({
+      preventScroll: true,
+    })
 
   const confirmed = await confirmAction({
     title: 'Abmelden?',
@@ -109,10 +129,21 @@ async function logout() {
 
   if (!confirmed) return
 
-  localStorage.removeItem('user')
-  username.value = ''
+  logoutError.value = ''
 
-  await router.replace('/')
+  try {
+    await endLogin()
+    await router.replace('/')
+  } catch (cause) {
+    logoutError.value =
+      cause instanceof Error
+        ? cause.message
+        : 'Abmelden fehlgeschlagen.'
+
+    if (menu.value) {
+      menu.value.open = true
+    }
+  }
 }
 </script>
 
@@ -127,7 +158,10 @@ async function logout() {
     @keydown.esc="handleEscape"
   >
     <summary class="user-button">
-      <span class="user-avatar" aria-hidden="true">
+      <span
+        class="user-avatar"
+        aria-hidden="true"
+      >
         {{ username.charAt(0).toUpperCase() }}
       </span>
 
@@ -135,10 +169,28 @@ async function logout() {
         {{ username }}
       </span>
 
-      <span aria-hidden="true">▾</span>
+      <span aria-hidden="true">
+        ▾
+      </span>
     </summary>
 
     <div class="user-dropdown">
+      <RouterLink
+        to="/logs"
+        class="logs-link"
+        @click="closeMenu"
+      >
+        Logs
+      </RouterLink>
+
+      <p
+        v-if="logoutError"
+        class="error-message"
+        role="alert"
+      >
+        {{ logoutError }}
+      </p>
+
       <button
         type="button"
         class="logout-button"
@@ -149,3 +201,23 @@ async function logout() {
     </div>
   </details>
 </template>
+
+<style scoped>
+.logs-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #205447;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.logs-link:hover {
+  background: #edf3ed;
+}
+
+.logs-link:focus-visible {
+  outline: 2px solid #205447;
+  outline-offset: 2px;
+}
+</style>
