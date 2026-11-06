@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type {
   ClassLabel,
   ClassRule,
@@ -15,13 +16,32 @@ const props = defineProps<{
   selectedClassId: number | null
   schoolYear: string
   busy: boolean
+  loading: boolean
+  lastLoadedAt: number | null
+  refreshError: string
 }>()
 
 const emit = defineEmits<{
   'toggle-day': [classId: number, day: Weekday]
   'change-capacity': [day: Weekday, amount: number]
   'change-year': [direction: number]
+  refresh: []
 }>()
+const lastLoadedTime = computed(() =>
+  props.lastLoadedAt === null
+    ? ''
+    : new Intl.DateTimeFormat('de-CH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(new Date(props.lastLoadedAt)),
+)
+
+const lastLoadedDate = computed(() =>
+  props.lastLoadedAt === null
+    ? undefined
+    : new Date(props.lastLoadedAt).toISOString(),
+)
 
 const weekdays: Weekday[] = [
   'Montag',
@@ -242,7 +262,52 @@ function badgeStyle(value: string) {
         </button>
       </div>
     </div>
+    <div class="schedule-refresh">
+      <div
+        class="refresh-status"
+        role="status"
+        aria-live="polite"
+      >
+        <p v-if="loading">
+          Daten werden geladen …
+        </p>
 
+        <template v-else>
+          <p
+            v-if="refreshError"
+            class="refresh-warning"
+          >
+            Laden nicht vollständig erfolgreich:
+            {{ refreshError }}
+          </p>
+
+          <p v-if="lastLoadedAt !== null">
+            Zuletzt vollständig geladen um
+
+            <time :datetime="lastLoadedDate">
+              {{ lastLoadedTime }}
+            </time>
+          </p>
+
+          <p v-else>
+            Noch kein vollständiger Datenstand geladen.
+          </p>
+        </template>
+      </div>
+
+      <button
+        type="button"
+        class="refresh-schedule-button"
+        :disabled="busy || loading"
+        @click="emit('refresh')"
+      >
+        {{
+          loading
+            ? 'Wird aktualisiert …'
+            : 'Aktualisieren'
+        }}
+      </button>
+    </div>
     <div class="table-wrapper">
       <table>
         <thead>
@@ -522,5 +587,122 @@ function badgeStyle(value: string) {
 .schedule .room-hint {
   width: 100%;
   margin-top: 0;
+}
+.schedule-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 0 0 20px;
+}
+
+.refresh-status {
+  flex: 1 1 220px;
+  color: #66736e;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.refresh-status p {
+  margin: 0;
+}
+
+.refresh-status .refresh-warning {
+  margin-bottom: 4px;
+  color: #a13232;
+}
+
+.schedule .refresh-schedule-button {
+  flex-shrink: 0;
+  width: auto;
+  min-height: 40px;
+  margin: 0;
+  padding: 9px 16px;
+  border: 1px solid #cad8ce;
+  border-radius: 10px;
+  background: #f3f6f2;
+  color: #205447;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.schedule .refresh-schedule-button:hover:not(:disabled) {
+  background: #e7efe8;
+}
+
+.schedule .refresh-schedule-button:focus-visible {
+  outline: 3px solid #205447;
+  outline-offset: 3px;
+}
+
+.schedule .refresh-schedule-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.schedule .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.schedule .year-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.schedule .schedule-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding-top: 14px;
+  border-top: 1px solid #e3e9e3;
+}
+
+.schedule .refresh-status {
+  color: #758079;
+  font-size: 12px;
+}
+
+.schedule .refresh-schedule-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 12px;
+
+  border: 1px solid #dce5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #426354;
+
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.schedule .refresh-schedule-button:hover:not(:disabled) {
+  border-color: #b6cbbd;
+  background: #eef4ef;
+}
+
+.schedule .refresh-schedule-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 </style>

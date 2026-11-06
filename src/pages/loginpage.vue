@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ref } from 'vue'
 import Footer from '@/components/Footer.vue'
 import { currentUser } from '@/services/auth'
 
 const router = useRouter()
+const route = useRoute()
+
 const email = ref('')
 const password = ref('')
+const submitting = ref(false)
+const errorMessage = ref('')
+
+const showRegistrationSuccess = ref(
+  route.query.registered === '1',
+)
 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
@@ -14,6 +22,12 @@ const API_URL = (
 ).replace(/\/$/, '')
 
 const handleLogin = async () => {
+  if (submitting.value) return
+
+  errorMessage.value = ''
+  showRegistrationSuccess.value = false
+  submitting.value = true
+
   try {
     const response = await fetch(`${API_URL}/login`, {
       method: 'POST',
@@ -29,21 +43,24 @@ const handleLogin = async () => {
     })
 
     const data = await response.json()
-    console.log('Antwort vom Backend:', data)
 
     if (response.ok && data.success) {
-      console.log('Login erfolgreich! Weiterleitung...')
-
       currentUser.value = data.user
       localStorage.removeItem('user')
 
       await router.push('/home')
     } else {
-      alert(data.message || 'Login fehlgeschlagen!')
+      errorMessage.value =
+        data.message ||
+        'Login fehlgeschlagen. Bitte versuche es erneut.'
     }
   } catch (error) {
     console.error('Fehler beim Anmelden:', error)
-    alert('Anmeldung nicht möglich. Bitte prüfe die Verbindung zum Backend.')
+
+    errorMessage.value =
+      'Anmeldung nicht möglich. Bitte prüfe deine Verbindung und versuche es erneut.'
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -62,31 +79,69 @@ const handleLogin = async () => {
       <div class="auth-card">
         <h2>Login</h2>
 
-        <form @submit.prevent="handleLogin">
+        <p
+          v-if="showRegistrationSuccess"
+          class="auth-feedback auth-feedback-success"
+          role="status"
+        >
+          Registrierung erfolgreich!
+          Du kannst dich jetzt anmelden.
+        </p>
+
+        <form
+          @submit.prevent="handleLogin"
+          :aria-busy="submitting"
+          @input="errorMessage = ''"
+        >
           <div class="form-group">
-            <label>E-Mail:</label>
+            <label for="login-email">
+              E-Mail:
+            </label>
 
             <input
-              type="email"
+              id="login-email"
               v-model="email"
+              type="email"
+              autocomplete="username"
               placeholder="example@examplemail.ch"
+              :disabled="submitting"
               required
             />
           </div>
 
           <div class="form-group">
-            <label>Passwort:</label>
+            <label for="login-password">
+              Passwort:
+            </label>
 
             <input
-              type="password"
+              id="login-password"
               v-model="password"
+              type="password"
+              autocomplete="current-password"
               placeholder="password"
+              :disabled="submitting"
               required
             />
           </div>
 
-          <button type="submit">
-            Einloggen
+          <p
+            v-if="errorMessage"
+            class="auth-feedback auth-feedback-error"
+            role="alert"
+          >
+            {{ errorMessage }}
+          </p>
+
+          <button
+            type="submit"
+            :disabled="submitting"
+          >
+            {{
+              submitting
+                ? 'Wird angemeldet …'
+                : 'Einloggen'
+            }}
           </button>
         </form>
 

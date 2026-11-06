@@ -4,9 +4,14 @@ import { ref } from 'vue'
 import Footer from '@/components/Footer.vue'
 
 const router = useRouter()
+
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
+
+const submitting = ref(false)
+const errorMessage = ref('')
+const passwordConfirmError = ref('')
 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
@@ -14,10 +19,18 @@ const API_URL = (
 ).replace(/\/$/, '')
 
 const handleRegister = async () => {
+  if (submitting.value) return
+
+  errorMessage.value = ''
+  passwordConfirmError.value = ''
+
   if (password.value !== passwordConfirm.value) {
-    alert('Passwort stimmt nicht überein')
+    passwordConfirmError.value =
+      'Die Passwörter stimmen nicht überein.'
     return
   }
+
+  submitting.value = true
 
   try {
     const response = await fetch(`${API_URL}/register`, {
@@ -34,17 +47,29 @@ const handleRegister = async () => {
     })
 
     const data = await response.json()
-    console.log('Antwort vom Backend:', data)
 
     if (response.ok && data.success) {
-      alert('Registrierung erfolgreich! Bitte logge dich ein.')
-      router.push('/')
+      await router.push({
+        path: '/',
+        query: {
+          registered: '1',
+        },
+      })
     } else {
-      alert(data.message || 'Registrierung fehlgeschlagen!')
+      errorMessage.value =
+        data.message ||
+        'Registrierung fehlgeschlagen. Bitte versuche es erneut.'
     }
   } catch (error) {
-    console.error('Verbindungsfehler:', error)
-    alert('Server ist nicht erreichbar! Läuft dein Backend?')
+    console.error(
+      'Fehler bei der Registrierung:',
+      error,
+    )
+
+    errorMessage.value =
+      'Registrierung nicht möglich. Bitte prüfe deine Verbindung und versuche es erneut.'
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -63,42 +88,97 @@ const handleRegister = async () => {
       <div class="auth-card">
         <h2>Registrierung</h2>
 
-        <form @submit.prevent="handleRegister">
+        <form
+          @submit.prevent="handleRegister"
+          :aria-busy="submitting"
+          @input="errorMessage = ''"
+        >
           <div class="form-group">
-            <label>E-Mail:</label>
+            <label for="register-email">
+              E-Mail:
+            </label>
 
             <input
-              type="email"
+              id="register-email"
               v-model="email"
+              type="email"
+              autocomplete="email"
               placeholder="example@examplemail.ch"
+              :disabled="submitting"
               required
             />
           </div>
 
           <div class="form-group">
-            <label>Passwort:</label>
+            <label for="register-password">
+              Passwort:
+            </label>
 
             <input
-              type="password"
+              id="register-password"
               v-model="password"
+              type="password"
+              autocomplete="new-password"
               placeholder="password"
+              :disabled="submitting"
+              @input="passwordConfirmError = ''"
               required
             />
           </div>
 
           <div class="form-group">
-            <label>Passwort wiederholen:</label>
+            <label for="register-password-confirm">
+              Passwort wiederholen:
+            </label>
 
             <input
-              type="password"
+              id="register-password-confirm"
               v-model="passwordConfirm"
+              type="password"
+              autocomplete="new-password"
               placeholder="password wiederholen"
+              :disabled="submitting"
+              :aria-invalid="
+                passwordConfirmError
+                  ? true
+                  : undefined
+              "
+              :aria-describedby="
+                passwordConfirmError
+                  ? 'password-confirm-error'
+                  : undefined
+              "
+              @input="passwordConfirmError = ''"
               required
             />
+
+            <p
+              v-if="passwordConfirmError"
+              id="password-confirm-error"
+              class="auth-field-error"
+              role="alert"
+            >
+              {{ passwordConfirmError }}
+            </p>
           </div>
 
-          <button type="submit">
-            Registrieren
+          <p
+            v-if="errorMessage"
+            class="auth-feedback auth-feedback-error"
+            role="alert"
+          >
+            {{ errorMessage }}
+          </p>
+
+          <button
+            type="submit"
+            :disabled="submitting"
+          >
+            {{
+              submitting
+                ? 'Wird registriert …'
+                : 'Registrieren'
+            }}
           </button>
         </form>
 

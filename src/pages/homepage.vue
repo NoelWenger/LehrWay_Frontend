@@ -59,6 +59,10 @@ const selectedClassId = ref<number | null>(null)
 const showClassEditor = ref(false)
 
 const loading = ref(false)
+const lastLoadedAt = ref<number | null>(null)
+
+let labelsRequest: Promise<boolean> | null = null
+
 const saving = ref(false)
 const labelSaving = ref(false)
 const labelsLoading = ref(false)
@@ -81,7 +85,8 @@ const schoolYear =
 const busy = computed(() =>
   loading.value ||
   saving.value ||
-  labelSaving.value,
+  labelSaving.value ||
+  labelsLoading.value,
 )
 
 const selectedClass = computed(() =>
@@ -121,9 +126,17 @@ function normalizeColor(value: unknown) {
 // Labels laden
 // --------------------------------------------------
 
-async function loadLabels() {
-  if (labelsLoading.value) return
+function loadLabels(): Promise<boolean> {
+  if (labelsRequest) return labelsRequest
 
+  labelsRequest = fetchLabels().finally(() => {
+    labelsRequest = null
+  })
+
+  return labelsRequest
+}
+
+async function fetchLabels(): Promise<boolean> {
   labelsLoading.value = true
   labelLoadError.value = ''
 
@@ -166,9 +179,13 @@ async function loadLabels() {
 
     labels.value = [...result.values()]
     labelsReady.value = true
+
+    return true
   } catch (error) {
     labelsReady.value = false
     labelLoadError.value = getError(error)
+
+    return false
   } finally {
     labelsLoading.value = false
   }
@@ -184,9 +201,12 @@ async function loadData() {
   loading.value = true
   apiError.value = ''
 
-  const labelRequest = loadLabels()
+  let labelRequest: Promise<boolean> | null = null
+  let planLoaded = false
 
   try {
+    labelRequest = loadLabels()
+
     const [
       dbClasses,
       dbRooms,
@@ -215,15 +235,19 @@ async function loadData() {
     classes.value = dbClasses.map(klasse => ({
       id: Number(klasse.id),
       name: klasse.bezeichnung,
+
       lehrgang_id:
         klasse.lehrgang_id == null
           ? null
           : Number(klasse.lehrgang_id),
+
       schoolDays: dbRooms
         .filter(room =>
           assignments.some(assignment =>
-            Number(assignment.klasse_id) === Number(klasse.id) &&
-            Number(assignment.ressourcen_id) === Number(room.id),
+            Number(assignment.klasse_id) ===
+            Number(klasse.id) &&
+            Number(assignment.ressourcen_id) ===
+            Number(room.id),
           ),
         )
         .map(room => room.wochentag),
@@ -244,12 +268,29 @@ async function loadData() {
       selectedClassId.value = null
       showClassEditor.value = false
     }
+
+    planLoaded = true
   } catch (error) {
     apiError.value = getError(error)
   } finally {
-    await labelRequest
-    loading.value = false
+    try {
+      const labelsLoaded = labelRequest
+        ? await labelRequest
+        : false
+
+      if (planLoaded && labelsLoaded) {
+        lastLoadedAt.value = Date.now()
+      }
+    } finally {
+      loading.value = false
+    }
   }
+}
+
+async function refreshData() {
+  if (busy.value) return
+
+  await loadData()
 }
 
 async function saveChange(
@@ -286,7 +327,6 @@ function selectClass(id: number) {
 function closeClassEditor() {
   if (busy.value) return
 
-  // Die Klasse bleibt für die Anzeige ihrer Labels ausgewählt.
   showClassEditor.value = false
 }
 
@@ -351,7 +391,9 @@ async function renameClass(value: string) {
   await saveChange(async () => {
     await request(
       `/klassen/${klasse.id}`,
-      json('PUT', { bezeichnung: name }),
+      json('PUT', {
+        bezeichnung: name,
+      }),
     )
 
     klasse.name = name
@@ -416,7 +458,8 @@ async function toggleSchoolDay(
   if (!klasse || busy.value) return
 
   if (!room) {
-    apiError.value = `Keine Ressource für ${day} gefunden.`
+    apiError.value =
+      `Keine Ressource für ${day} gefunden.`
     return
   }
 
@@ -429,10 +472,13 @@ async function toggleSchoolDay(
         json('DELETE'),
       )
     } else {
-      await request('/klasse-ressourcen', json('POST', {
-        klasse_id: classId,
-        ressourcen_id: room.id,
-      }))
+      await request(
+        '/klasse-ressourcen',
+        json('POST', {
+          klasse_id: classId,
+          ressourcen_id: room.id,
+        }),
+      )
     }
   }, message => {
     apiError.value = message
@@ -453,7 +499,10 @@ async function changeCapacity(
     await request(
       `/ressourcen/${room.id}`,
       json('PUT', {
-        anzahl_raeume: Math.max(0, room.capacity + amount),
+        anzahl_raeume: Math.max(
+          0,
+          room.capacity + amount,
+        ),
       }),
     )
   }, message => {
@@ -513,7 +562,9 @@ function onLabelSaved(assignment: ClassLabel) {
   labels.value.push(assignment)
 }
 
-function onLabelColorChanged(change: LabelColorChange) {
+function onLabelColorChanged(
+  change: LabelColorChange,
+) {
   for (const label of labels.value) {
     if (label.label_id === change.label_id) {
       label.farbe = normalizeColor(change.farbe)
@@ -546,12 +597,21 @@ onMounted(loadData)
           Lehr<span>way</span>
         </router-link>
 
-        <nav class="site-nav" aria-label="Hauptnavigation">
-          <router-link to="/home" class="nav-link">
+        <nav
+          class="site-nav"
+          aria-label="Hauptnavigation"
+        >
+          <router-link
+            to="/home"
+            class="nav-link"
+          >
             Wochenplan
           </router-link>
 
-          <router-link to="/lehrgang" class="nav-link">
+          <router-link
+            to="/lehrgang"
+            class="nav-link"
+          >
             Lehrgänge
           </router-link>
         </nav>
@@ -562,7 +622,9 @@ onMounted(loadData)
 
     <div class="page-intro">
       <h1>Wochenübersicht</h1>
-      <p>Plane Klassen, Schultage und verfügbare Räume.</p>
+      <p>
+        Plane Klassen, Schultage und verfügbare Räume.
+      </p>
     </div>
 
     <main class="page-main">
@@ -582,7 +644,6 @@ onMounted(loadData)
         {{ apiError }}
       </p>
 
-      <!-- Klassenübersicht -->
       <aside class="panel">
         <h2>Klassen</h2>
 
@@ -669,7 +730,8 @@ onMounted(loadData)
               type="button"
               class="list-button"
               :class="{
-                selected: selectedClassId === klasse.id,
+                selected:
+                  selectedClassId === klasse.id,
               }"
               :disabled="busy"
               @click="selectClass(klasse.id)"
@@ -689,7 +751,6 @@ onMounted(loadData)
         </p>
       </aside>
 
-      <!-- Die Wochenansicht nutzt jetzt den übrigen Platz. -->
       <WeeklySchedule
         class="panel"
         :classes="classes"
@@ -699,15 +760,21 @@ onMounted(loadData)
         :selected-class-id="selectedClassId"
         :school-year="schoolYear"
         :busy="busy"
+        :loading="loading"
+        :last-loaded-at="lastLoadedAt"
+        :refresh-error="apiError || labelLoadError"
+        @refresh="refreshData"
         @toggle-day="toggleSchoolDay"
         @change-capacity="changeCapacity"
         @change-year="changeSchoolYear"
       />
     </main>
 
-    <!-- Klassenbearbeitung außerhalb des Seitenrasters -->
     <ClassEditorDrawer
-      :open="showClassEditor && selectedClass !== null"
+      :open="
+        showClassEditor &&
+        selectedClass !== null
+      "
       :busy="busy"
       @close="closeClassEditor"
     >
