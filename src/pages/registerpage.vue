@@ -119,7 +119,7 @@ const handleRegister = async () => {
               v-model="password"
               type="password"
               autocomplete="new-password"
-              placeholder="password"
+              placeholder="passwort"
               :disabled="submitting"
               @input="passwordConfirmError = ''"
               required
@@ -136,7 +136,7 @@ const handleRegister = async () => {
               v-model="passwordConfirm"
               type="password"
               autocomplete="new-password"
-              placeholder="password wiederholen"
+              placeholder="passwort wiederholen"
               :disabled="submitting"
               :aria-invalid="
                 passwordConfirmError
