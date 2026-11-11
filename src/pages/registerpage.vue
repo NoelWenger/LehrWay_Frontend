@@ -5,6 +5,7 @@ import Footer from '@/components/Footer.vue'
 
 const router = useRouter()
 
+const username = ref('')
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
@@ -41,6 +42,7 @@ const handleRegister = async () => {
         'X-Lehrway-Request': '1',
       },
       body: JSON.stringify({
+        username: username.value.trim(),
         email: email.value,
         password: password.value,
       }),
@@ -93,6 +95,21 @@ const handleRegister = async () => {
           :aria-busy="submitting"
           @input="errorMessage = ''"
         >
+          <div class="form-group">
+            <label for="register-username">Anzeigename</label>
+
+            <input
+              id="register-username"
+              v-model.trim="username"
+              type="text"
+              autocomplete="nickname"
+              placeholder="z. B. Kenan"
+              maxlength="50"
+              :disabled="submitting"
+              required
+            />
+          </div>
+
           <div class="form-group">
             <label for="register-email">
               E-Mail:
