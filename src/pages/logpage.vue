@@ -5,7 +5,7 @@ import {
   reactive,
   ref,
 } from 'vue'
-
+import SearchableSelect from '@/components/SearchableSelect.vue'
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import { request } from '@/services/lehrway-api'
@@ -366,21 +366,20 @@ onMounted(() => refresh())
           <div class="filter-field">
             <label for="log-user">Benutzer</label>
 
-            <select
+            <SearchableSelect
               id="log-user"
               v-model="draft.username"
+              placeholder="Alle Benutzer"
               :disabled="loading || optionsLoading"
-            >
-              <option value="">Alle Benutzer</option>
+              :options="[
+    { value: '', label: 'Alle Benutzer' },
+    ...usernames.map(username => ({
+      value: username,
+      label: username,
+    })),
+  ]"
+            />
 
-              <option
-                v-for="username in usernames"
-                :key="username"
-                :value="username"
-              >
-                {{ username }}
-              </option>
-            </select>
           </div>
 
           <div class="filter-field">

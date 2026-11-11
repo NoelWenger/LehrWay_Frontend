@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
-
+import SearchableSelect from '@/components/SearchableSelect.vue'
 import Footer from '@/components/Footer.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import WeeklySchedule from '@/components/WeeklySchedule.vue'
@@ -668,23 +668,16 @@ onMounted(loadData)
             required
           >
 
-          <select
+          <SearchableSelect
+            id="new-class-course"
             v-model="selectedCourseId"
+            placeholder="Lehrgang auswählen"
             :disabled="busy"
-            required
-          >
-            <option :value="null" disabled>
-              Lehrgang auswählen
-            </option>
-
-            <option
-              v-for="course in courses"
-              :key="course.id"
-              :value="course.id"
-            >
-              {{ course.bezeichnung }}
-            </option>
-          </select>
+            :options="courses.map(course => ({
+    value: course.id,
+    label: course.bezeichnung,
+  }))"
+          />
 
           <button
             type="submit"

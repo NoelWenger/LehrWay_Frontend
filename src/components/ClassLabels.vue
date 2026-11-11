@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { request, json } from '../services/lehrway-api'
 import LabelColorPicker from '@/components/LabelColorPicker.vue'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 interface ClassLabel {
   klasse_id: number
@@ -570,29 +571,16 @@ onMounted(loadExistingLabels)
         </p>
       </div>
 
-      <select
+      <SearchableSelect
         :id="`existing-label-${classId}`"
         v-model="selectedExistingId"
-        :disabled="
-          busy ||
-          !ready ||
-          existingLabelsLoading ||
-          availableLabels.length === 0
-        "
-        required
-      >
-        <option :value="null" disabled>
-          Label auswählen
-        </option>
-
-        <option
-          v-for="label in availableLabels"
-          :key="label.id"
-          :value="label.id"
-        >
-          {{ label.name }}
-        </option>
-      </select>
+        placeholder="Label auswählen"
+        :disabled="busy || !ready || existingLabelsLoading || !availableLabels.length"
+        :options="availableLabels.map(label => ({
+    value: label.id,
+    label: label.name,
+  }))"
+      />
 
       <div
         v-if="selectedExistingLabel"

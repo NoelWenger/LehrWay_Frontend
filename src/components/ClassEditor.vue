@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import ClassLabels from '@/components/ClassLabels.vue'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 import type {
   ClassLabel,
@@ -148,21 +149,16 @@ function addRule() {
           Darf nicht am gleichen Tag wie:
         </label>
 
-        <select
+        <SearchableSelect
           id="rule-class"
           v-model="selectedRuleClassId"
+          placeholder="Klasse auswählen"
           :disabled="busy"
-        >
-          <option :value="null">Klasse auswählen</option>
-
-          <option
-            v-for="klasse in availableClasses"
-            :key="klasse.id"
-            :value="klasse.id"
-          >
-            {{ klasse.name }}
-          </option>
-        </select>
+          :options="availableClasses.map(klasse => ({
+    value: klasse.id,
+    label: klasse.name,
+  }))"
+        />
 
         <button
           type="submit"
