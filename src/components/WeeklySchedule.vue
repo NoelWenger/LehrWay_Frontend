@@ -28,6 +28,7 @@ const emit = defineEmits<{
   'change-year': [direction: number]
   refresh: []
 }>()
+
 const lastLoadedTime = computed(() =>
   props.lastLoadedAt === null
     ? ''
@@ -52,44 +53,28 @@ const weekdays: Weekday[] = [
   'Freitag',
 ]
 
-function hasSchool(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
+function hasSchool(klasse: SchoolClass, day: Weekday) {
   return klasse.schoolDays.includes(day)
 }
 
 function getLabels(classId: number) {
-  return props.labels.filter(
-    label => label.klasse_id === classId,
-  )
+  return props.labels.filter(label => label.klasse_id === classId)
 }
 
 function getUsedRooms(day: Weekday) {
-  return props.classes.filter(
-    klasse => hasSchool(klasse, day),
-  ).length
+  return props.classes.filter(klasse => hasSchool(klasse, day)).length
 }
 
 function getRoomCapacity(day: Weekday) {
-  return props.rooms.find(
-    room => room.day === day,
-  )?.capacity ?? 0
+  return props.rooms.find(room => room.day === day)?.capacity ?? 0
 }
 
 function getMissingRooms(day: Weekday) {
-  return Math.max(
-    0,
-    getUsedRooms(day) - getRoomCapacity(day),
-  )
+  return Math.max(0, getUsedRooms(day) - getRoomCapacity(day))
 }
 
-// Prüft die anderen Klassen unabhängig davon,
-// ob der betrachtete Schultag bereits aktiviert ist.
-function getConflictingClasses(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
+// Prüft auch bei einem leeren Feld, welche Klassen am Tag Schule haben.
+function getConflictingClasses(klasse: SchoolClass, day: Weekday) {
   const otherIds = new Set(
     props.rules
       .filter(rule =>
@@ -110,28 +95,16 @@ function getConflictingClasses(
   )
 }
 
-function getCellConflicts(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  const messages = getConflictingClasses(
-    klasse,
-    day,
-  ).map(other =>
+function getCellConflicts(klasse: SchoolClass, day: Weekday) {
+  const messages = getConflictingClasses(klasse, day).map(other =>
     `${klasse.name} und ${other.name} dürfen am ${day} nicht gleichzeitig Schule haben.`,
   )
 
   const active = hasSchool(klasse, day)
 
-  // Bei einem leeren Feld wird die zusätzliche Klasse
-  // für die Vorschau bereits mitgezählt.
-  const used =
-    getUsedRooms(day) + (active ? 0 : 1)
-
-  const missing = Math.max(
-    0,
-    used - getRoomCapacity(day),
-  )
+  // Bei einem leeren Feld zählt die Klasse für die Vorschau bereits mit.
+  const used = getUsedRooms(day) + (active ? 0 : 1)
+  const missing = Math.max(0, used - getRoomCapacity(day))
 
   if (missing > 0) {
     messages.push(
@@ -144,44 +117,18 @@ function getCellConflicts(
   return messages
 }
 
-function getConflictHeading(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  const count =
-    getCellConflicts(klasse, day).length
+const schoolDayCells = computed(() =>
+  props.classes.map(klasse => ({
+    klasse,
+    days: weekdays.map(day => ({
+      day,
+      active: hasSchool(klasse, day),
+      conflicts: getCellConflicts(klasse, day),
+    })),
+  })),
+)
 
-  if (hasSchool(klasse, day)) {
-    return count === 1
-      ? 'Konflikt'
-      : 'Konflikte'
-  }
-
-  return count === 1
-    ? 'Möglicher Konflikt'
-    : 'Mögliche Konflikte'
-}
-
-// Der bisherige kurze Hinweis beim Überfahren bleibt erhalten.
-function getPotentialConflictText(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
-  if (hasSchool(klasse, day)) return ''
-
-  const count =
-    getCellConflicts(klasse, day).length
-
-  if (count === 0) return ''
-
-  return count === 1
-    ? 'Ein Konflikt würde entstehen'
-    : 'Mehrere Konflikte würden entstehen'
-}
-async function handleSchoolDayClick(
-  klasse: SchoolClass,
-  day: Weekday,
-) {
+async function handleSchoolDayClick(klasse: SchoolClass, day: Weekday) {
   if (props.busy) return
 
   const active = hasSchool(klasse, day)
@@ -214,14 +161,16 @@ async function handleSchoolDayClick(
   emit('toggle-day', klasse.id, day)
 }
 
+function handleDirectSchoolDayClick(classId: number, day: Weekday) {
+  if (props.busy) return
+
+  emit('toggle-day', classId, day)
+}
+
 function getRoomConflictText(day: Weekday) {
   const missing = getMissingRooms(day)
 
-  return `${
-    missing === 1
-      ? 'Ein Raum'
-      : missing + ' Räume'
-  } zu wenig.`
+  return `${missing === 1 ? 'Ein Raum' : missing + ' Räume'} zu wenig.`
 }
 
 function getRoomUsageText(day: Weekday) {
@@ -263,10 +212,7 @@ function badgeStyle(value: string) {
 
   return {
     backgroundColor: color,
-    color:
-      luminance > 0.179
-        ? '#000000'
-        : '#ffffff',
+    color: luminance > 0.179 ? '#000000' : '#ffffff',
   }
 }
 </script>
@@ -298,36 +244,23 @@ function badgeStyle(value: string) {
         </button>
       </div>
     </div>
+
     <div class="schedule-refresh">
-      <div
-        class="refresh-status"
-        role="status"
-        aria-live="polite"
-      >
-        <p v-if="loading">
-          Daten werden geladen …
-        </p>
+      <div class="refresh-status" role="status" aria-live="polite">
+        <p v-if="loading">Daten werden geladen …</p>
 
         <template v-else>
-          <p
-            v-if="refreshError"
-            class="refresh-warning"
-          >
+          <p v-if="refreshError" class="refresh-warning">
             Laden nicht vollständig erfolgreich:
             {{ refreshError }}
           </p>
 
           <p v-if="lastLoadedAt !== null">
             Zuletzt vollständig geladen um
-
-            <time :datetime="lastLoadedDate">
-              {{ lastLoadedTime }}
-            </time>
+            <time :datetime="lastLoadedDate">{{ lastLoadedTime }}</time>
           </p>
 
-          <p v-else>
-            Noch kein vollständiger Datenstand geladen.
-          </p>
+          <p v-else>Noch kein vollständiger Datenstand geladen.</p>
         </template>
       </div>
 
@@ -337,41 +270,27 @@ function badgeStyle(value: string) {
         :disabled="busy || loading"
         @click="emit('refresh')"
       >
-        {{
-          loading
-            ? 'Wird aktualisiert …'
-            : 'Aktualisieren'
-        }}
+        {{ loading ? 'Wird aktualisiert …' : 'Aktualisieren' }}
       </button>
     </div>
+
     <div class="table-wrapper">
       <table>
         <thead>
         <tr>
           <th scope="col">Klasse</th>
-
-          <th
-            v-for="day in weekdays"
-            :key="day"
-            scope="col"
-          >
+          <th v-for="day in weekdays" :key="day" scope="col">
             {{ day }}
           </th>
         </tr>
         </thead>
 
         <tbody>
-        <tr
-          v-for="klasse in classes"
-          :key="klasse.id"
-        >
+        <tr v-for="{ klasse, days } in schoolDayCells" :key="klasse.id">
           <th
             scope="row"
             class="class-name-cell"
-            :class="{
-                selected:
-                  selectedClassId === klasse.id,
-              }"
+            :class="{ selected: selectedClassId === klasse.id }"
           >
             <span>{{ klasse.name }}</span>
 
@@ -391,34 +310,51 @@ function badgeStyle(value: string) {
             </div>
           </th>
 
-          <td
-            v-for="day in weekdays"
-            :key="day"
-          >
-            <button
-              type="button"
-              class="school-day-button"
-              :class="{
-    active: hasSchool(klasse, day),
-    'has-potential-conflict': getPotentialConflictText(klasse, day),
-    'has-active-conflict':
-      hasSchool(klasse, day) && getCellConflicts(klasse, day).length > 0,
-  }"
-              :disabled="busy"
-              :aria-pressed="hasSchool(klasse, day)"
-              :aria-label="`${klasse.name}, ${day}: ${
-    getCellConflicts(klasse, day).length
-      ? 'Konflikte anzeigen'
-      : hasSchool(klasse, day)
-        ? 'Schultag deaktivieren'
-        : 'Schultag aktivieren'
-  }`"
-              @click="handleSchoolDayClick(klasse, day)"
+          <td v-for="cell in days" :key="cell.day">
+            <div
+              class="school-day-control"
+              :class="{ 'is-split': cell.conflicts.length > 0 }"
             >
-              {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
-            </button>
+              <button
+                type="button"
+                class="school-day-button"
+                :class="{
+                    active: cell.active,
+                    'has-potential-conflict':
+                      !cell.active && cell.conflicts.length > 0,
+                    'has-active-conflict':
+                      cell.active && cell.conflicts.length > 0,
+                  }"
+                :disabled="busy"
+                :aria-pressed="cell.active"
+                :aria-label="`${klasse.name}, ${cell.day}: ${
+                    cell.conflicts.length
+                      ? 'Konflikte anzeigen'
+                      : cell.active
+                        ? 'Schultag entfernen'
+                        : 'Schultag aktivieren'
+                  }`"
+                @click="handleSchoolDayClick(klasse, cell.day)"
+              >
+                {{ cell.active ? 'Schule' : '–' }}
+              </button>
 
-
+              <button
+                v-if="cell.conflicts.length > 0"
+                type="button"
+                class="school-day-direct"
+                :disabled="busy"
+                :aria-label="`${klasse.name}, ${cell.day}: ${
+                    cell.active
+                      ? 'Schultag direkt entfernen'
+                      : 'Schultag direkt aktivieren'
+                  }`"
+                :title="cell.active ? 'Direkt entfernen' : 'Direkt aktivieren'"
+                @click="handleDirectSchoolDayClick(klasse.id, cell.day)"
+              >
+                {{ cell.active ? '−' : '+' }}
+              </button>
+            </div>
           </td>
         </tr>
         </tbody>
@@ -427,42 +363,24 @@ function badgeStyle(value: string) {
         <tr>
           <th scope="row">Räume</th>
 
-          <td
-            v-for="day in weekdays"
-            :key="day"
-          >
+          <td v-for="day in weekdays" :key="day">
             <div class="room-controls">
                 <span>
-                  {{ getUsedRooms(day) }} /
-                  {{ getRoomCapacity(day) }}
+                  {{ getUsedRooms(day) }} / {{ getRoomCapacity(day) }}
                 </span>
 
               <details
                 v-if="getMissingRooms(day) > 0"
                 class="conflict-hint room-hint"
               >
-                <summary
-                  :aria-label="`${day}: Raumkonflikt – Erklärung`"
-                >
-                  {{
-                    getMissingRooms(day) === 1
-                      ? 'Raum fehlt'
-                      : 'Räume fehlen'
-                  }}
+                <summary :aria-label="`${day}: Raumkonflikt – Erklärung`">
+                  {{ getMissingRooms(day) === 1 ? 'Raum fehlt' : 'Räume fehlen' }}
                 </summary>
 
                 <div class="conflict-explanation">
-                  <p class="hint-context">
-                    {{ day }}
-                  </p>
-
-                  <p>
-                    {{ getRoomUsageText(day) }}
-                  </p>
-
-                  <p>
-                    {{ getRoomConflictText(day) }}
-                  </p>
+                  <p class="hint-context">{{ day }}</p>
+                  <p>{{ getRoomUsageText(day) }}</p>
+                  <p>{{ getRoomConflictText(day) }}</p>
                 </div>
               </details>
 
@@ -471,23 +389,16 @@ function badgeStyle(value: string) {
                   type="button"
                   :disabled="busy"
                   :aria-label="`${day}: Raumanzahl erhöhen`"
-                  @click="
-                      emit('change-capacity', day, 1)
-                    "
+                  @click="emit('change-capacity', day, 1)"
                 >
                   ▲
                 </button>
 
                 <button
                   type="button"
-                  :disabled="
-                      busy ||
-                      getRoomCapacity(day) === 0
-                    "
+                  :disabled="busy || getRoomCapacity(day) === 0"
                   :aria-label="`${day}: Raumanzahl verringern`"
-                  @click="
-                      emit('change-capacity', day, -1)
-                    "
+                  @click="emit('change-capacity', day, -1)"
                 >
                   ▼
                 </button>
@@ -502,30 +413,81 @@ function badgeStyle(value: string) {
 </template>
 
 <style scoped>
+.schedule .school-day-control {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 122px;
+  vertical-align: middle;
+}
+
+.schedule .school-day-control.is-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.schedule .school-day-control > button {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 39px;
+  margin: 0;
+}
+
+.schedule .school-day-control.is-split > .school-day-button {
+  padding: 6px 4px;
+  border-radius: 9px 0 0 9px;
+}
 
 .schedule .school-day-button.has-potential-conflict {
   border-color: #d6b44c;
   background: #fff4c7;
   color: #634900;
   font-weight: 600;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .schedule .school-day-button.has-potential-conflict:hover:not(:disabled) {
   border-color: #bb942a;
   background: #ffedaa;
 }
+
+.schedule .school-day-button.active.has-active-conflict {
+  border-color: #dca09a;
+  background: #fbe8e5;
+  color: #922f29;
+}
+
+.schedule .school-day-button.active.has-active-conflict:hover:not(:disabled) {
+  border-color: #c47770;
+  background: #f6d7d3;
+}
+
+.schedule .school-day-control > .school-day-direct {
+  padding: 0;
+  border: 1px solid #cbd2cf;
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: #e9ecea;
+  color: #39443f;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.schedule .school-day-control > .school-day-direct:hover:not(:disabled) {
+  background: #dce2de;
+}
+
+.schedule .school-day-control > button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
 .schedule .conflict-hint {
   margin-top: 8px;
   color: #a13232;
   font-size: 12px;
   line-height: 1.5;
   text-align: left;
-}
-
-.schedule .conflict-hint.potential {
-  color: #66736e;
 }
 
 .conflict-hint > summary {
@@ -586,72 +548,11 @@ function badgeStyle(value: string) {
   font-weight: 700;
 }
 
-.conflict-explanation ul {
-  margin: 0;
-  padding-left: 16px;
-}
-
-.conflict-explanation li + li {
-  margin-top: 7px;
-}
-
 .schedule .room-hint {
   width: 100%;
   margin-top: 0;
 }
-.schedule-refresh {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  margin: 0 0 20px;
-}
 
-.refresh-status {
-  flex: 1 1 220px;
-  color: #66736e;
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.refresh-status p {
-  margin: 0;
-}
-
-.refresh-status .refresh-warning {
-  margin-bottom: 4px;
-  color: #a13232;
-}
-
-.schedule .refresh-schedule-button {
-  flex-shrink: 0;
-  width: auto;
-  min-height: 40px;
-  margin: 0;
-  padding: 9px 16px;
-  border: 1px solid #cad8ce;
-  border-radius: 10px;
-  background: #f3f6f2;
-  color: #205447;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.schedule .refresh-schedule-button:hover:not(:disabled) {
-  background: #e7efe8;
-}
-
-.schedule .refresh-schedule-button:focus-visible {
-  outline: 3px solid #205447;
-  outline-offset: 3px;
-}
-
-.schedule .refresh-schedule-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
 .schedule .section-heading {
   display: flex;
   align-items: center;
@@ -673,32 +574,41 @@ function badgeStyle(value: string) {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 22px;
+  margin: 0 0 22px;
   padding-top: 14px;
   border-top: 1px solid #e3e9e3;
 }
 
 .schedule .refresh-status {
+  flex: 1 1 220px;
   color: #758079;
   font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.refresh-status p {
+  margin: 0;
+}
+
+.refresh-status .refresh-warning {
+  margin-bottom: 4px;
+  color: #a13232;
 }
 
 .schedule .refresh-schedule-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   flex: 0 0 auto;
   width: auto;
   min-height: 34px;
   margin: 0;
   padding: 7px 12px;
-
   border: 1px solid #dce5dd;
   border-radius: 8px;
-  background: #ffffff;
+  background: #fff;
   color: #426354;
-
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -712,21 +622,13 @@ function badgeStyle(value: string) {
   background: #eef4ef;
 }
 
+.schedule .refresh-schedule-button:focus-visible {
+  outline: 3px solid #205447;
+  outline-offset: 3px;
+}
+
 .schedule .refresh-schedule-button:disabled {
   opacity: 0.55;
   cursor: wait;
-}
-.schedule .school-day-button.active.has-active-conflict {
-  border-color: #dca09a;
-  background: #fbe8e5;
-  color: #922f29;
-}
-
-.schedule .school-day-button.active.has-active-conflict:hover:not(:disabled) {
-  border-color: #c47770;
-  background: #f6d7d3;
-}
-.schedule .school-day-button {
-  max-width: 122px;
 }
 </style>
