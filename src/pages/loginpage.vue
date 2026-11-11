@@ -119,7 +119,7 @@ const handleLogin = async () => {
               v-model="password"
               type="password"
               autocomplete="current-password"
-              placeholder="password"
+              placeholder="passwort"
               :disabled="submitting"
               required
             />
