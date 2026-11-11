@@ -1,110 +1,81 @@
-# Lehrway – Frontend
+# Lehrway – Klassen und Lehrgänge gemeinsam planen
 
-**Lehrway** ist eine Webanwendung zur übersichtlichen Planung von Klassen, Schultagen und Lehrgängen. Dieses Repository enthält das **Frontend**: die Benutzeroberfläche, über die Lehrgänge aufgebaut, Module über Quartale verteilt und Klassen in einer Wochenübersicht organisiert werden können.
+**IPT 8.1** · Vue 3 · TypeScript · Vite · Express · MariaDB
 
-> **Projektstatus:** Frontend in Entwicklung. Einige Funktionen sind bereits interaktiv umgesetzt, andere sind im Mockup vorgesehen. Eine dauerhafte Speicherung der Planungsdaten und die vollständige Benutzerverwaltung erfordern ein separates Backend.
+Lehrway ist eine Webanwendung für die gemeinsame Schulplanung. In der Wochenansicht sieht das Team, welche Klassen an welchen Tagen Unterricht haben, wie viele Räume dafür benötigt werden und wo Konflikte entstehen. Auf der Lehrgangsseite lassen sich Module und Lektionen über mehrere Quartale planen.
 
-## Projektteam
+![Wochenansicht von Lehrway mit Klassen, Schultagen und Raumkapazitäten](docs/bilder/lehrway-homepage.png)
 
-- Luka
-- Noel
-- Khalil
-- Kenan
+[Alle fünf Seiten ansehen](docs/frontend-seiten.md) · [Ursprüngliches Mockup ansehen](docs/mockups/Mockup_Lehrway.png)
 
-## Ziel des Projekts
+## Nutzen und Ziele
 
-Lehrway soll die Planung von Lehrgängen und Klassen vereinfachen. Statt Informationen an verschiedenen Orten zu verwalten, sollen Lehrgänge, Module, Lektionen, Schultage und Raumkapazitäten in einer gemeinsamen, verständlichen Oberfläche dargestellt werden. Dabei helfen automatische Hinweise, mögliche Planungskonflikte frühzeitig zu erkennen.
+- **Schultage und Räume gemeinsam planen.** Die Wochenansicht zeigt Unterrichtstage und Raumkapazitäten in derselben Tabelle. So lässt sich erkennen, ob für die geplanten Klassen genügend Räume vorhanden sind.
+- **Konflikte vor dem Eintragen erkennen.** Lehrway zeigt an, wenn zwei Klassen laut Regel am selben Tag keinen Unterricht haben dürfen oder wenn Räume fehlen. Das Planungsteam entscheidet, ob es die Änderung trotzdem übernimmt.
+- **Lehrpläne über mehrere Semester pflegen.** Die Quartalsansicht zeigt, wann ein Modul stattfindet und wie viele Lektionen dafür vorgesehen sind.
+- **Änderungen im Team nachvollziehen.** Der Änderungsverlauf zeigt, wer die Planung angepasst hat, und bietet für protokollierte Änderungen einen Vorher-Nachher-Vergleich.
 
+## Funktionen
 
-## Seiten und Funktionen
+| Bereich | Was du damit machen kannst |
+| --- | --- |
+| **Wochenplan** | Schuljahr wählen, Klassen suchen und verwalten, Schultage festlegen und Raumkapazitäten anpassen |
+| **Regeln und Labels** | Konfliktregeln zwischen Klassen festlegen und Klassen mit wiederverwendbaren farbigen Labels kennzeichnen |
+| **Lehrgänge** | Lehrgänge mit zwei, vier, sechs oder acht Semestern verwalten und Module mit Lektionenzahlen über Quartale planen |
+| **Änderungsverlauf** | Nach Text, Benutzer, Änderungsart und Zeitraum filtern und ältere Einträge nachladen |
+| **Benutzerkonto** | Mit Anzeigename registrieren, mit E-Mail und Passwort anmelden und die Sitzung über das Benutzermenü beenden |
 
-### 1. Login
+## Architektur
 
-Die Loginseite ist der vorgesehene Einstieg in die Anwendung. Benutzer geben ihre E-Mail-Adresse und ihr Passwort ein. Beim Absenden wird eine `POST`-Anfrage an `http://localhost:3000/api/login` gesendet. Wenn die Antwort erfolgreich ist und `success` zurückliefert, erfolgt die Weiterleitung nach `/home`. Bei Fehlern erscheint eine Meldung.
+```mermaid
+flowchart LR
+    Browser["Frontend · Vue 3, TypeScript, Vite"]
+    API["Backend · Node.js und Express"]
+    DB[("MariaDB")]
 
-**Wichtig:** Die eigentliche Prüfung der Zugangsdaten findet nicht im Frontend statt. Ohne laufendes Backend ist der Login nicht vollständig nutzbar. Sobald die Datenbank bereit ist, wird diese Nachricht gelöscht.
-
-### 2. Registrierung
-
-Die Registrierungsseite bietet Felder für E-Mail, Passwort und Passwortbestätigung. Aktuell prüft das Frontend, ob die beiden Passwörter übereinstimmen, und leitet danach zur Homepage weiter.
-
-**Aktueller Stand:** Es wird noch kein Benutzerkonto auf einem Server erstellt. Die Registrierung ist bisher eine Frontend-Demonstration. Die Ausgabe von Passwörtern in der Browserkonsole sollte vor einem produktiven Einsatz entfernt werden. Sobald die Datenbank bereit ist, wird diese Nachricht gelöscht.
-
-### 3. Homepage – Wochenübersicht
-
-Die Homepage zeigt eine Wochenplanung von **Montag bis Freitag**. Klassen werden zeilenweise dargestellt; pro Tag kann festgelegt werden, ob die Klasse Unterricht hat.
-
-Im bereitgestellten Frontend-Code enthalten sind:
-
-- Klassen erstellen, auswählen, suchen, umbenennen und löschen
-- Gleichnamige Klassen innerhalb eines Schuljahres verhindern
-- Schultage einer Klasse durch Anklicken ein- und ausschalten
-- Zwischen Schuljahren wechseln; beim erstmaligen Wechsel in ein neues Jahr werden die bisherigen Planungsdaten als Ausgangspunkt kopiert
-- Regeln festlegen, nach denen zwei Klassen **nicht am gleichen Tag** Unterricht haben dürfen
-- Regelverstösse in der Wochenübersicht kennzeichnen
-- Raumkapazitäten für einzelne Wochentage erhöhen oder verringern
-- Warnen, wenn mehr Klassen eingeplant sind als Räume verfügbar sind
-
-
-### 4. Lehrgänge – Lehrplanverwaltung
-
-Auf der Lehrgangsseite können Lehrgänge erstellt, gesucht, ausgewählt, umbenannt und gelöscht werden. Jeder Lehrgang enthält eigene Module, die hinzugefügt oder entfernt werden können.
-
-Der Lehrplan ist in **drei Lehrjahre, sechs Semester und zwölf Quartale** aufgeteilt. Innerhalb eines Moduls können Felder über ein oder mehrere aufeinanderfolgende Quartale angelegt werden. Dazu wird zuerst ein Startquartal und danach ein Endquartal im selben Modul gewählt. Für jedes Feld kann eine **Anzahl Lektionen** eingetragen und später bearbeitet werden.
-
-Die Anwendung prüft dabei, ob der gewählte Quartalsbereich bereits durch ein anderes Feld belegt ist, und verhindert solche Überschneidungen.
-
-Beispielsweise lässt sich ein Modul wie `M117` in einem Lehrgang `IMS` eintragen, über mehrere Quartale planen und mit einer Lektionenzahl versehen.
-
-## Mockup und Design
-
-Das folgende Mockup zeigt die angestrebte Gestaltung der Wochenübersicht:
-
-![Lehrway – Mockup der Wochenübersicht](docs/Mockup_Lehrway.png)
-
-Die Darstellung sieht eine Navigationsleiste, eine Klassenliste, eine zentrale Wochenübersicht und ein Bearbeitungsfeld für die ausgewählte Klasse vor. Farbliche Markierungen sollen Lehrgänge, Module und mögliche Regelverstösse schnell erkennbar machen.
-
-**Hinweis:** Das Mockup ist eine Designvorlage und entspricht nicht in allen Details dem derzeitigen Funktionsumfang. Deswegen wird das Endprodukt nicht aussehen wie das Mockup, aber das Mockup steht für die Inspiration da.
-
-## Navigation und typischer Ablauf
-
-1. Benutzer öffnen die Login- oder Registrierungsseite.
-2. Nach dem Login bzw. dem derzeitigen Registrierungsablauf gelangen sie zur Homepage.
-3. In der Wochenübersicht verwalten sie Klassen, Schultage, Regeln und Raumkapazitäten.
-4. Über **Lehrgänge** öffnen sie die Lehrgangsverwaltung.
-5. Dort erstellen sie Lehrgänge und Module und verteilen Lektionen auf Quartale.
-
-
-## Frontend lokal starten
-
-Vorausgesetzt werden **Node.js** und ein passender Paketmanager (z. B. npm). Im Frontend-Projektordner können die Abhängigkeiten installiert werden:
-
-```bash
-npm install
+    Browser <-->|"HTTP und JSON · Sitzungs-Cookie"| API
+    API <-->|SQL| DB
 ```
 
-Falls das Projekt wie üblich mit einem `dev`-Script eingerichtet ist, lässt sich der Entwicklungsserver starten mit:
+Dieses Repository enthält das Frontend. Die API und die Datenbankkonfiguration befinden sich im [Lehrway-Backend](https://github.com/NoelWenger/LehrWay_Backend).
+
+## Lokal starten
+
+**Voraussetzungen:** Node.js gemäss `engines` in [`package.json`](package.json), npm und ein laufendes Lehrway-Backend mit MariaDB. Das Frontend verlangt Node.js ab 22.18 innerhalb der 22er-Reihe oder ab 24.12.
+
+Im Frontend-Ordner ausführen:
 
 ```bash
+npm ci
 npm run dev
 ```
 
+Öffne anschliessend die Adresse, die Vite im Terminal anzeigt. Standardmässig verwendet das Frontend `http://localhost:3000/api`. Wenn das Backend unter einer anderen Adresse erreichbar ist, setze `VITE_API_URL` in der Datei `.env.local` im Frontend-Hauptordner:
 
-## Datenhaltung und Backend-Abgrenzung
+```dotenv
+VITE_API_URL=http://localhost:3000/api
+```
 
-Der aktuelle Code verwaltet Klassen, Schuljahre, Regeln, Raumkapazitäten, Lehrgänge, Module und Quartalsfelder mit reaktivem Vue-State (`ref` und `computed`). Die Beispieldaten sind direkt in den Komponenten definiert. **Änderungen werden noch nicht dauerhaft in einer Datenbank gespeichert** und können beim Neuladen verloren gehen.
+Bei getrennten Adressen für Frontend und Backend muss die Frontend-Adresse in `FRONTEND_ORIGINS` im Backend eingetragen sein, damit der Browser das Sitzungs-Cookie bei API-Anfragen verwenden kann.
 
-Dieser Abschnitt wird nach der Finalisierung der Datenbank gelöscht.
+```bash
+npm run type-check
+npm run build
+```
 
-## Nächste Schritte
+`type-check` prüft TypeScript und Vue-Komponenten. `build` erstellt den auslieferbaren Frontend-Build in `dist/`.
 
-- Login und Registrierung vollständig mit dem Backend verbinden
-- Sichere Sitzungsverwaltung und Schutz der geschützten Routen ergänzen
-- Klassen, Lehrgänge, Module und Planungen dauerhaft speichern und laden mit Datenbank
-- Frontend-Design weiter an das Mockup anpassen
-- Formulare, Fehlermeldungen und Bedienbarkeit weiter verbessern
-- Funktionen und Konfliktprüfungen testen
+## Dokumentation
 
-## Zusammenfassung
+| Dokument | Inhalt |
+| --- | --- |
+| [Technologieentscheid](docs/Technologienentscheid.md) | Technologien, ihre Aufgaben und die Aufteilung zwischen Frontend und Backend |
+| [Modulübersicht](docs/moduleuebersicht.md) | Seiten, Komponenten und Dienste mit Links zum Code |
+| [Funktionsübersicht](docs/funktionsuebersicht.md) | Bedienabläufe, Konfliktprüfung und Codebeispiel |
+| [Frontend-Seiten](docs/frontend-seiten.md) | Routen und Bilder aller fünf Seiten |
+| [Design](docs/design.md) | Farbpalette, Bedienmuster und ursprüngliches Mockup |
+| [Protokolle](docs/Protokolle/) | Projektbesprechungen und Arbeitsstand |
 
-Lehrway bietet bereits eine interaktive Grundlage für die Klassen- und Lehrgangsplanung. Die Wochenübersicht unterstützt Klassenverwaltung, Schultage, Regeln und Raumkapazitäten. In der Lehrgangsverwaltung lassen sich Lehrgänge und Module organisieren sowie Lektionen über Quartale planen.
+## Projektteam
+
+Lehrway entstand im Rahmen der Projektarbeit **IPT 8.1**. Zum Team gehören **Luka, Noël, Khalil und Kenan**.
