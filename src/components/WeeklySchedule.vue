@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { confirmAction } from '@/composables/useConfirm'
 import { computed } from 'vue'
 import type {
   ClassLabel,
@@ -174,8 +175,33 @@ function getPotentialConflictText(
   if (count === 0) return ''
 
   return count === 1
-    ? 'Es entsteht ein Konflikt'
-    : 'Es entstehen Konflikte'
+    ? 'Ein Konflikt würde entstehen'
+    : 'Mehrere Konflikte würden entstehen'
+}
+async function handleSchoolDayClick(
+  klasse: SchoolClass,
+  day: Weekday,
+) {
+  if (props.busy) return
+
+  if (!hasSchool(klasse, day)) {
+    const conflicts = getCellConflicts(klasse, day)
+
+    if (conflicts.length > 0) {
+      const confirmed = await confirmAction({
+        title: 'Schultag trotz Konflikt aktivieren?',
+        context: `${klasse.name} · ${day}`,
+        message: conflicts.map(conflict => `• ${conflict}`).join('\n'),
+        question: 'Möchtest du den Schultag trotzdem aktivieren?',
+        confirmLabel: 'Trotzdem aktivieren',
+        cancelLabel: 'Abbrechen',
+      })
+
+      if (!confirmed || props.busy) return
+    }
+  }
+
+  emit('toggle-day', klasse.id, day)
 }
 
 function getRoomConflictText(day: Weekday) {
@@ -363,29 +389,25 @@ function badgeStyle(value: string) {
               type="button"
               class="school-day-button"
               :class="{
-                  active: hasSchool(klasse, day),
-                }"
+    active: hasSchool(klasse, day),
+    'has-potential-conflict': getPotentialConflictText(klasse, day),
+  }"
               :disabled="busy"
               :aria-pressed="hasSchool(klasse, day)"
-              :aria-label="`${klasse.name}, ${day}: Schultag ${hasSchool(klasse, day) ? 'deaktivieren' : 'aktivieren'}`"
-              :title="
-                  getPotentialConflictText(klasse, day)
-                "
-              @click="
-                  emit('toggle-day', klasse.id, day)
-                "
+              :aria-label="`${klasse.name}, ${day}: ${
+    hasSchool(klasse, day)
+      ? 'Schultag deaktivieren'
+      : getPotentialConflictText(klasse, day)
+        ? 'Mögliche Konflikte prüfen'
+        : 'Schultag aktivieren'
+  }`"
+              @click="handleSchoolDayClick(klasse, day)"
             >
-              {{
-                hasSchool(klasse, day)
-                  ? 'Schule'
-                  : '–'
-              }}
+              {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
             </button>
 
             <details
-              v-if="
-                  getCellConflicts(klasse, day).length
-                "
+              v-if="hasSchool(klasse, day) && getCellConflicts(klasse, day).length"
               class="conflict-hint"
               :class="{
                   potential:
@@ -505,6 +527,20 @@ function badgeStyle(value: string) {
 </template>
 
 <style scoped>
+
+.schedule .school-day-button.has-potential-conflict {
+  border-color: #d6b44c;
+  background: #fff4c7;
+  color: #634900;
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.schedule .school-day-button.has-potential-conflict:hover:not(:disabled) {
+  border-color: #bb942a;
+  background: #ffedaa;
+}
 .schedule .conflict-hint {
   margin-top: 8px;
   color: #a13232;

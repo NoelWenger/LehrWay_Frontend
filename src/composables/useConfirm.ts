@@ -3,6 +3,8 @@ import { reactive, readonly } from 'vue'
 interface ConfirmationOptions {
   title: string
   message: string
+  context?: string
+  question?: string
   confirmLabel?: string
   cancelLabel?: string
   tone?: 'neutral' | 'danger'
@@ -12,6 +14,8 @@ interface ConfirmationState {
   open: boolean
   title: string
   message: string
+  context: string
+  question: string
   confirmLabel: string
   cancelLabel: string
   tone: 'neutral' | 'danger'
@@ -21,6 +25,8 @@ const state = reactive<ConfirmationState>({
   open: false,
   title: '',
   message: '',
+  context: '',
+  question: '',
   confirmLabel: 'Bestätigen',
   cancelLabel: 'Abbrechen',
   tone: 'neutral',
@@ -44,6 +50,8 @@ export function confirmAction(
     Object.assign(state, {
       title: options.title,
       message: options.message,
+      context: options.context ?? '',
+      question: options.question ?? '',
       confirmLabel: options.confirmLabel ?? 'Bestätigen',
       cancelLabel: options.cancelLabel ?? 'Abbrechen',
       tone: options.tone ?? 'neutral',

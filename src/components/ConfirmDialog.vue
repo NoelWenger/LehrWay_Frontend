@@ -124,9 +124,19 @@ onBeforeUnmount(() => {
           {{ state.title }}
         </h2>
 
-        <p id="confirm-dialog-message">
-          {{ state.message }}
-        </p>
+        <div id="confirm-dialog-message">
+          <p v-if="state.context" class="confirm-dialog-context">
+            {{ state.context }}
+          </p>
+
+          <p class="confirm-dialog-message-text">
+            {{ state.message }}
+          </p>
+
+          <p v-if="state.question" class="confirm-dialog-question">
+            {{ state.question }}
+          </p>
+        </div>
       </div>
 
       <div class="confirm-actions">
@@ -150,3 +160,7 @@ onBeforeUnmount(() => {
     </dialog>
   </Teleport>
 </template>
+
+<style scoped>
+
+</style>
