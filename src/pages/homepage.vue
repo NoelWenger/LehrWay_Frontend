@@ -77,10 +77,12 @@ const showCreateClass = ref(false)
 const newClassName = ref('')
 const selectedCourseId = ref<number | null>(null)
 
-const currentYear = new Date().getFullYear()
+const currentStartYear = ref(2026)
 
-const schoolYear =
-  `${currentYear}/${String(currentYear + 1).slice(-2)}`
+const schoolYear = computed(() => {
+  const y = currentStartYear.value
+  return `${y}/${String(y + 1).slice(-2)}`
+})
 
 const busy = computed(() =>
   loading.value ||
@@ -207,6 +209,8 @@ async function loadData() {
   try {
     labelRequest = loadLabels()
 
+    const yearParam = `?year=${currentStartYear.value}`
+
     const [
       dbClasses,
       dbRooms,
@@ -214,11 +218,11 @@ async function loadData() {
       assignments,
       dbCourses,
     ] = await Promise.all([
-      request<DBClass[]>('/klassen'),
-      request<DBRoom[]>('/ressourcen'),
-      request<DBRule[]>('/regeln'),
-      request<DBAssignment[]>('/klasse-ressourcen'),
-      request<DBLehrgang[]>('/lehrgaenge'),
+      request<DBClass[]>(`/klassen${yearParam}`),
+      request<DBRoom[]>(`/ressourcen${yearParam}`),
+      request<DBRule[]>(`/regeln${yearParam}`),
+      request<DBAssignment[]>(`/klasse-ressourcen${yearParam}`),
+      request<DBLehrgang[]>('/lehrgaenge'), // Lehrgänge sind jahresunabhängig, bleibt ohne Parameter
     ])
 
     courses.value = dbCourses.map(course => ({
@@ -356,6 +360,7 @@ async function createClass() {
       bezeichnung: name,
       lehrgang_id: courseId,
       anzahl_schultage_woche: 0,
+      year: currentStartYear.value,
     }))
 
     newClassName.value = ''
