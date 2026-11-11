@@ -585,10 +585,10 @@ function onLabelRemoved(removal: LabelRemoval) {
   )
 }
 
-function changeSchoolYear(_direction: number) {
-  apiError.value =
-    'Der Schuljahreswechsel benötigt noch eine ' +
-    'Schuljahr-Zuordnung in der Datenbank.'
+async function changeSchoolYear(direction: number) {
+  if (busy.value) return
+  currentStartYear.value += direction
+  await loadData()
 }
 
 onMounted(loadData)
