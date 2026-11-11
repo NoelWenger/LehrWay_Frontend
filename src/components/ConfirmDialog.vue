@@ -109,16 +109,6 @@ onBeforeUnmount(() => {
       @close="handleNativeClose"
     >
       <div class="confirm-content">
-        <div class="confirm-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="8.5" />
-            <path d="M12 7.5v5.5M12 16.5h.01" />
-          </svg>
-        </div>
-
-        <span class="confirm-eyebrow">
-          Bestätigung
-        </span>
 
         <h2 id="confirm-dialog-title">
           {{ state.title }}
@@ -162,5 +152,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.confirm-dialog {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(320px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
+}
 
+.confirm-actions {
+  flex-wrap: wrap;
+}
 </style>
