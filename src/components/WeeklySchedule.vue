@@ -184,21 +184,31 @@ async function handleSchoolDayClick(
 ) {
   if (props.busy) return
 
-  if (!hasSchool(klasse, day)) {
-    const conflicts = getCellConflicts(klasse, day)
+  const active = hasSchool(klasse, day)
+  const conflicts = getCellConflicts(klasse, day)
 
-    if (conflicts.length > 0) {
-      const confirmed = await confirmAction({
-        title: 'Schultag trotz Konflikt aktivieren?',
-        context: `${klasse.name} · ${day}`,
-        message: conflicts.map(conflict => `• ${conflict}`).join('\n'),
-        question: 'Möchtest du den Schultag trotzdem aktivieren?',
-        confirmLabel: 'Trotzdem aktivieren',
-        cancelLabel: 'Abbrechen',
-      })
+  if (conflicts.length > 0) {
+    const confirmed = await confirmAction({
+      title: active
+        ? 'Schultag entfernen?'
+        : 'Schultag trotz Konflikt aktivieren?',
+      context: `${klasse.name} · ${day}`,
+      message: conflicts.map(conflict => `• ${conflict}`).join('\n'),
+      question: active
+        ? 'Möchtest du den Schultag aus dem Wochenplan entfernen?'
+        : 'Möchtest du den Schultag trotzdem aktivieren?',
+      confirmLabel: active
+        ? 'Schultag entfernen'
+        : 'Trotzdem aktivieren',
+      cancelLabel: 'Abbrechen',
+      tone: active ? 'danger' : 'neutral',
+    })
 
-      if (!confirmed || props.busy) return
-    }
+    if (!confirmed || props.busy) return
+
+    const currentClass = props.classes.find(entry => entry.id === klasse.id)
+
+    if (!currentClass || hasSchool(currentClass, day) !== active) return
   }
 
   emit('toggle-day', klasse.id, day)
@@ -391,14 +401,16 @@ function badgeStyle(value: string) {
               :class="{
     active: hasSchool(klasse, day),
     'has-potential-conflict': getPotentialConflictText(klasse, day),
+    'has-active-conflict':
+      hasSchool(klasse, day) && getCellConflicts(klasse, day).length > 0,
   }"
               :disabled="busy"
               :aria-pressed="hasSchool(klasse, day)"
               :aria-label="`${klasse.name}, ${day}: ${
-    hasSchool(klasse, day)
-      ? 'Schultag deaktivieren'
-      : getPotentialConflictText(klasse, day)
-        ? 'Mögliche Konflikte prüfen'
+    getCellConflicts(klasse, day).length
+      ? 'Konflikte anzeigen'
+      : hasSchool(klasse, day)
+        ? 'Schultag deaktivieren'
         : 'Schultag aktivieren'
   }`"
               @click="handleSchoolDayClick(klasse, day)"
@@ -406,44 +418,7 @@ function badgeStyle(value: string) {
               {{ hasSchool(klasse, day) ? 'Schule' : '–' }}
             </button>
 
-            <details
-              v-if="hasSchool(klasse, day) && getCellConflicts(klasse, day).length"
-              class="conflict-hint"
-              :class="{
-                  potential:
-                    !hasSchool(klasse, day),
-                }"
-            >
-              <summary
-                :aria-label="`${klasse.name}, ${day}: ${getConflictHeading(klasse, day)} – Erklärung`"
-              >
-                {{
-                  getConflictHeading(klasse, day)
-                }}
-              </summary>
 
-              <div class="conflict-explanation">
-                <p class="hint-context">
-                  {{ klasse.name }} · {{ day }}
-                </p>
-
-                <p v-if="!hasSchool(klasse, day)">
-                  Beim Aktivieren dieses Schultags:
-                </p>
-
-                <ul>
-                  <li
-                    v-for="message in getCellConflicts(
-                        klasse,
-                        day,
-                      )"
-                    :key="message"
-                  >
-                    {{ message }}
-                  </li>
-                </ul>
-              </div>
-            </details>
           </td>
         </tr>
         </tbody>
@@ -740,5 +715,18 @@ function badgeStyle(value: string) {
 .schedule .refresh-schedule-button:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+.schedule .school-day-button.active.has-active-conflict {
+  border-color: #dca09a;
+  background: #fbe8e5;
+  color: #922f29;
+}
+
+.schedule .school-day-button.active.has-active-conflict:hover:not(:disabled) {
+  border-color: #c47770;
+  background: #f6d7d3;
+}
+.schedule .school-day-button {
+  max-width: 122px;
 }
 </style>

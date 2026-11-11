@@ -2100,3 +2100,7 @@ body:has(.class-drawer[open]) {
   font-weight: 600;
   line-height: 1.5;
 }
+.page-auth .auth-card .auth-feedback-error {
+  color: #a13232;
+  font-weight: 600;
+}
