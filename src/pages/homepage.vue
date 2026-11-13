@@ -587,10 +587,37 @@ function onLabelRemoved(removal: LabelRemoval) {
 
 async function changeSchoolYear(direction: number) {
   if (busy.value) return
-  currentStartYear.value += direction
+
+  const nextYear = currentStartYear.value + direction
+  if (nextYear < 2000 || nextYear > 2036) return
+
+  currentStartYear.value = nextYear
   await loadData()
 }
+async function copyPreviousYear() {
+  if (busy.value || classes.value.length > 0) return
 
+  const year = currentStartYear.value
+
+  const confirmed = await confirmAction({
+    title: 'Klassen aus dem Vorjahr übernehmen?',
+    context: schoolYear.value,
+    message: 'Die Klassen, Module, Labels, Schultage und Konfliktregeln des direkten Vorjahrs werden übernommen.',
+    confirmLabel: 'Übernehmen',
+    cancelLabel: 'Abbrechen',
+  })
+
+  if (!confirmed || busy.value || currentStartYear.value !== year) return
+
+  await saveChange(async () => {
+    await request(
+      '/schuljahre/aus-vorjahr-kopieren',
+      json('POST', { year }),
+    )
+  }, message => {
+    apiError.value = message
+  })
+}
 onMounted(loadData)
 </script>
 
@@ -745,6 +772,15 @@ onMounted(loadData)
         >
           Keine Klassen gefunden.
         </p>
+        <button
+          v-if="!loading && !apiError && lastLoadedAt !== null && classes.length === 0"
+          type="button"
+          class="primary-button"
+          :disabled="busy"
+          @click="copyPreviousYear"
+        >
+          Klassen aus dem Vorjahr übernehmen
+        </button>
       </aside>
 
       <WeeklySchedule
@@ -763,6 +799,7 @@ onMounted(loadData)
         @toggle-day="toggleSchoolDay"
         @change-capacity="changeCapacity"
         @change-year="changeSchoolYear"
+        :can-go-next-year="currentStartYear < 2036"
       />
     </main>
 

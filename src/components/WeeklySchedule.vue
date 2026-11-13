@@ -20,6 +20,7 @@ const props = defineProps<{
   loading: boolean
   lastLoadedAt: number | null
   refreshError: string
+  canGoNextYear: boolean
 }>()
 
 const emit = defineEmits<{
@@ -236,7 +237,7 @@ function badgeStyle(value: string) {
 
         <button
           type="button"
-          :disabled="busy"
+          :disabled="busy || !canGoNextYear"
           aria-label="Nächstes Schuljahr"
           @click="emit('change-year', 1)"
         >
