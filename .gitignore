@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+minera-debug.log*
 
 node_modules
 .DS_Store
@@ -13,6 +14,12 @@ dist
 dist-ssr
 coverage
 *.local
+dist_18_11_2026_1
+dist_18_11_2026_2
+dist_18_11_2026_3
+dist_18_11_2026_4
+dist_18_11_2026_5
+dist_18_11_2026_6
 
 # Editor directories and files
 .vscode/*
