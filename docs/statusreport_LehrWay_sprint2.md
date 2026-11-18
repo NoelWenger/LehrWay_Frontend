@@ -15,18 +15,20 @@
 
 ## Management Summary
 
-Wir haben im zweiten Sprint grosse Fortschritte gemacht. Die Datenbank ist komplett Fertig.
+Wir haben im zweiten Sprint grosse Fortschritte gemacht. Die Datenbank ist komplett fertig.
 Jetzt konnten wir auch im Frontend die Mockdaten mit richtigen Daten ersetzen. 
-Ausserdem haben wir mehrere änderungen am Design im Frontend gearbeitet, Beispiel Colourchange von Blau auf Grün. 
-Wir haben ebenfalls eine Logpage hinzugefügt, damit wir als Protokoll jeweilige änderungen Speichern. <br>
+Ausserdem haben wir mehrere Änderungen am Design vom Frontend gearbeitet,<br>
+Beispiel: Colourchange von Blau auf Grün.<br> 
+Wir haben ebenfalls eine Logpage hinzugefügt, damit jeweilige Änderungen als Protokoll gespeichert wird. <br>
 Wir sind mehrmals zu Herrn Lagger gegangen, um Verbesserungvorschläge von ihm einzutreiben.
-So garantieren wir die einhaltung jeglicher Vorschriften und Kriterien für das Projekt.<br>
-Der CSS des Frontend ist mehrheitlich fertig. Jegliche zusätzliche Wünsche von Herrn Lagger wurden erfüllt.
+So garantieren wir die einhaltung jeglicher 
+Vorschriften und Kriterien für das Projekt.<br>
+Das CSS vom Frontend ist mehrheitlich fertig. Jegliche zusätzliche Wünsche von Herrn Lagger wurden erfüllt.
 Gerade sind wir dabei bei Plesk dafür zu sorgen, dass jeder auf die gleiche Datenbank zugreifft und somit auch automatisch den gleichen Stand des Kalenders hat.<br>
 Ebenfalls haben wir an der Workpipeline begonnen.
 Dies machen wir Vis-à-vis zum Modul M324, wo wir genau DevOps gerade anfangen zu behandeln.
-Wir haben ebenfalls die verschiedenen README.md dateien beim Front- und Backend aktualisiert. 
-Das Backend README.md wird noch besser aktualisiert.
+Wir haben ebenfalls die verschiedenen README.md-Dateien beim Front- und Backend aktualisiert. 
+Das Readme vom Backend wird noch besser aktualisiert.
 
 
 **Gesamtstatus:** 🟢 Grün
@@ -59,9 +61,10 @@ Dies stellt sich wegen der komplexität von PLESK als grössere Aufgabe.
 
 - **Aufgabe 2: Workpipeline mittels Plesk**<br>
 Beschäftigung mit DevOps.
-Veränderungen sollten automatisch gebuild und 
+Veränderungen sollten automatisch gebuilded und 
 gehostet werden. Dies soll mit einer Workpipeline/DevOps geschehen.
 Es soll alles automatisch laufen und keine Interaktionen benötigen.
+
 
 
 
@@ -72,9 +75,11 @@ Dies wird so schnell wie möglich im amfang vom Sprint 3 behandelt.
 
 
 
+
 - **Aufgabe 4: Backend README aktualisieren** <br>
 Das README im Backend wird noch aktualisiert.
 Dies wird hauptsächlich von Khalil erldedigt. 
+
 
 
 
