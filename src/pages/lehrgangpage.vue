@@ -50,6 +50,7 @@ const loading = ref(false)
 const saving = ref(false)
 const apiError = ref('')
 const planError = ref('')
+// const twoexError = ref('') // NICHT LOESCHEN
 const successVersion = ref(0)
 
 const showCreateCourse = ref(false)
@@ -58,6 +59,10 @@ const newCourseSemesters = ref(6)
 
 const editedCourseName = ref('')
 const editedCourseSemesters = ref(6)
+//const editedCourseClass = ref('')
+//const editedCourseField = ref('')
+// Nicht loeschen ^^^
+
 
 const createCourseError = ref('')
 const editCourseError = ref('')
@@ -84,6 +89,15 @@ function getError(error: unknown) {
     : 'Ein unbekannter Fehler ist aufgetreten.'
 }
 
+/*
+function getErrors(error: twoex) {
+  return error instanceof Error
+  ? error.message
+    : 'twoex fehlt - DB nachchecken'
+}
+//NICHT LOESCHEN ^^^^
+
+ */
 function toDBQuarter(quarter: number) {
   const lehrjahr = Math.floor((quarter - 1) / 4) + 1
   const quartal = ((quarter - 1) % 4) + 1

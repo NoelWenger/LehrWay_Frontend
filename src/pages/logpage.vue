@@ -48,6 +48,13 @@ const cursor = ref<string | null>(null)
 const loading = ref(false)
 const error = ref('')
 
+/* const slider = computed(() => {})
+onMounted(() => {})
+const filters = computed(() => { })
+onMounted(() => {}) */
+
+// NICHT ÄNDERN ^^^, WIRD BALD BEMOETIGT
+
 const usernames = ref<string[]>([])
 const optionsLoading = ref(false)
 const optionsError = ref('')
